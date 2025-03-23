@@ -1,18 +1,21 @@
 
 import React from 'react';
 import { FileIcon, ArrowRightLeft } from 'lucide-react';
+import { ThemeToggle } from './ThemeToggle';
 
 const Header = () => {
   return (
     <header className="w-full py-6 px-6 mb-8">
       <div className="max-w-4xl mx-auto">
-        <div className="flex items-center justify-center">
+        <div className="flex items-center justify-between">
           <div className="glass inline-flex items-center px-4 py-2 rounded-full">
             <div className="mr-2 bg-primary/10 p-1 rounded-full">
               <FileIcon className="h-5 w-5 text-primary" />
             </div>
             <h1 className="text-lg font-medium">API Specification Converter</h1>
           </div>
+          
+          <ThemeToggle />
         </div>
         
         <div className="mt-12 text-center animate-fade-in">
