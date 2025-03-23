@@ -4,15 +4,16 @@ import { toast } from 'sonner';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Textarea } from "@/components/ui/textarea";
 import { FileText, FileJson, ArrowRight, AlertCircle } from 'lucide-react';
-import { isValidYaml, isValidJson, isOpenApi3, isSwagger2 } from '@/lib/converter';
+import { isValidYaml, isValidJson, isOpenApi3, isSwagger2, ConversionDirection } from '@/lib/converter';
 import * as yaml from 'js-yaml';
 
 interface CodeInputProps {
   onContentSubmit: (content: string, type: string) => void;
   currentContent?: string | null;
+  conversionDirection: ConversionDirection;
 }
 
-const CodeInput = ({ onContentSubmit, currentContent = null }: CodeInputProps) => {
+const CodeInput = ({ onContentSubmit, currentContent = null, conversionDirection }: CodeInputProps) => {
   const [inputContent, setInputContent] = useState('');
   const [activeTab, setActiveTab] = useState('yaml');
   const [isLoading, setIsLoading] = useState(false);
@@ -39,17 +40,17 @@ const CodeInput = ({ onContentSubmit, currentContent = null }: CodeInputProps) =
     }
   }, [currentContent]);
 
-  // Validate input whenever content or active tab changes
+  // Validate input whenever content, active tab, or conversion direction changes
   useEffect(() => {
     if (!inputContent.trim()) {
       setValidationStatus(null);
       return;
     }
     
-    validateInput(inputContent, activeTab);
-  }, [inputContent, activeTab]);
+    validateInput(inputContent, activeTab, conversionDirection);
+  }, [inputContent, activeTab, conversionDirection]);
   
-  const validateInput = (content: string, format: string) => {
+  const validateInput = (content: string, format: string, direction: ConversionDirection) => {
     // Check format validation (YAML or JSON)
     let formatValid = false;
     let parsedContent: any = null;
@@ -94,17 +95,29 @@ const CodeInput = ({ onContentSubmit, currentContent = null }: CodeInputProps) =
       }
     }
     
-    // If format is valid, check specification type
+    // If format is valid, check specification type and match with conversion direction
     if (formatValid && parsedContent) {
-      if (isOpenApi3(parsedContent)) {
+      const isOpenApi = isOpenApi3(parsedContent);
+      const isSwagger = isSwagger2(parsedContent);
+      
+      if (isOpenApi) {
         specType = 'OpenAPI 3.x';
-        specTypeValid = true;
-      } else if (isSwagger2(parsedContent)) {
+      } else if (isSwagger) {
         specType = 'Swagger 2.0';
-        specTypeValid = true;
       } else {
         specTypeValid = false;
         message = 'Not a valid API specification (OpenAPI 3.x or Swagger 2.0)';
+      }
+      
+      // Verify the spec type matches the conversion direction
+      if (isOpenApi && direction === ConversionDirection.SWAGGER_TO_OPENAPI) {
+        specTypeValid = false;
+        message = `Expected Swagger 2.0 specification for "${direction}" conversion`;
+      } else if (isSwagger && direction === ConversionDirection.OPENAPI_TO_SWAGGER) {
+        specTypeValid = false;
+        message = `Expected OpenAPI 3.x specification for "${direction}" conversion`;
+      } else if (isOpenApi || isSwagger) {
+        specTypeValid = true;
       }
     }
     
@@ -132,6 +145,18 @@ const CodeInput = ({ onContentSubmit, currentContent = null }: CodeInputProps) =
       if (activeTab === 'json') {
         try {
           parsedContent = JSON.parse(inputContent);
+          
+          // Validate specification type for the current conversion direction
+          if (conversionDirection === ConversionDirection.SWAGGER_TO_OPENAPI && !isSwagger2(parsedContent)) {
+            toast.error('Expected Swagger 2.0 specification for Swagger to OpenAPI conversion');
+            setIsLoading(false);
+            return;
+          } else if (conversionDirection === ConversionDirection.OPENAPI_TO_SWAGGER && !isOpenApi3(parsedContent)) {
+            toast.error('Expected OpenAPI 3.x specification for OpenAPI to Swagger conversion');
+            setIsLoading(false);
+            return;
+          }
+          
           // Convert JSON to YAML for processing
           const yamlContent = yaml.dump(parsedContent);
           contentType = 'yaml';
@@ -162,8 +187,13 @@ const CodeInput = ({ onContentSubmit, currentContent = null }: CodeInputProps) =
         
         const parsedYaml = yaml.load(inputContent) as any;
         
-        if (!isOpenApi3(parsedYaml) && !isSwagger2(parsedYaml)) {
-          toast.error('The content is not a recognized API specification (OpenAPI 3.x or Swagger 2.0)');
+        // Validate specification type for the current conversion direction
+        if (conversionDirection === ConversionDirection.SWAGGER_TO_OPENAPI && !isSwagger2(parsedYaml)) {
+          toast.error('Expected Swagger 2.0 specification for Swagger to OpenAPI conversion');
+          setIsLoading(false);
+          return;
+        } else if (conversionDirection === ConversionDirection.OPENAPI_TO_SWAGGER && !isOpenApi3(parsedYaml)) {
+          toast.error('Expected OpenAPI 3.x specification for OpenAPI to Swagger conversion');
           setIsLoading(false);
           return;
         }
@@ -181,7 +211,11 @@ const CodeInput = ({ onContentSubmit, currentContent = null }: CodeInputProps) =
   return (
     <div className="w-full max-w-xl mx-auto">
       <div className="glass-card p-6">
-        <h3 className="text-base font-medium mb-4">Paste your API specification (OpenAPI 3.x or Swagger 2.0)</h3>
+        <h3 className="text-base font-medium mb-4">
+          {conversionDirection === ConversionDirection.SWAGGER_TO_OPENAPI 
+            ? 'Paste your Swagger 2.0 specification'
+            : 'Paste your OpenAPI 3.x specification'}
+        </h3>
         
         <Tabs defaultValue="yaml" value={activeTab} onValueChange={setActiveTab}>
           <TabsList className="glass mb-4">
@@ -198,7 +232,9 @@ const CodeInput = ({ onContentSubmit, currentContent = null }: CodeInputProps) =
           <TabsContent value="yaml">
             <Textarea 
               className="glass-input min-h-[200px] font-mono text-sm"
-              placeholder="Paste your YAML here..."
+              placeholder={conversionDirection === ConversionDirection.SWAGGER_TO_OPENAPI 
+                ? "Paste your Swagger 2.0 YAML here..."
+                : "Paste your OpenAPI 3.x YAML here..."}
               value={inputContent}
               onChange={(e) => setInputContent(e.target.value)}
             />
@@ -207,7 +243,9 @@ const CodeInput = ({ onContentSubmit, currentContent = null }: CodeInputProps) =
           <TabsContent value="json">
             <Textarea 
               className="glass-input min-h-[200px] font-mono text-sm"
-              placeholder="Paste your JSON here..."
+              placeholder={conversionDirection === ConversionDirection.SWAGGER_TO_OPENAPI 
+                ? "Paste your Swagger 2.0 JSON here..."
+                : "Paste your OpenAPI 3.x JSON here..."}
               value={inputContent}
               onChange={(e) => setInputContent(e.target.value)}
             />

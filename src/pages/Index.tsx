@@ -35,28 +35,27 @@ const Index = () => {
     setSwaggerContent(null);
     setConversionWarnings([]);
     
-    // Auto-detect spec type and set direction accordingly
+    // Auto-detect spec type can be used for user convenience, but don't automatically
+    // switch the direction to avoid confusion - we'll just validate based on current direction
     const specType = detectSpecType(content);
-    if (specType === 'openapi3') {
-      setDirection(ConversionDirection.OPENAPI_TO_SWAGGER);
-    } else if (specType === 'swagger2') {
-      setDirection(ConversionDirection.SWAGGER_TO_OPENAPI);
+    
+    // Validate uploaded content matches the selected conversion direction
+    if ((direction === ConversionDirection.OPENAPI_TO_SWAGGER && specType !== 'openapi3') ||
+        (direction === ConversionDirection.SWAGGER_TO_OPENAPI && specType !== 'swagger2')) {
+      const expectedType = direction === ConversionDirection.OPENAPI_TO_SWAGGER ? 'OpenAPI 3.x' : 'Swagger 2.0';
+      const actualType = specType === 'openapi3' ? 'OpenAPI 3.x' : specType === 'swagger2' ? 'Swagger 2.0' : 'Unknown';
+      toast.error(`Expected ${expectedType} specification but detected ${actualType}`);
+      setYamlContent(null);
+      setFilename('');
     }
   };
   
   const handleContentSubmit = (content: string, name: string) => {
+    // The validation will already have been done in the CodeInput component
     setYamlContent(content);
     setFilename(name);
     setSwaggerContent(null);
     setConversionWarnings([]);
-    
-    // Auto-detect spec type and set direction accordingly
-    const specType = detectSpecType(content);
-    if (specType === 'openapi3') {
-      setDirection(ConversionDirection.OPENAPI_TO_SWAGGER);
-    } else if (specType === 'swagger2') {
-      setDirection(ConversionDirection.SWAGGER_TO_OPENAPI);
-    }
   };
 
   const clearInput = () => {
@@ -78,13 +77,13 @@ const Index = () => {
       // Small delay to show the animation
       await new Promise(resolve => setTimeout(resolve, 500));
       
-      // Detect spec type and show warning if it doesn't match the selected direction
+      // Detect spec type and validate it matches the selected direction
       const specType = detectSpecType(yamlContent);
       
       if ((direction === ConversionDirection.OPENAPI_TO_SWAGGER && specType !== 'openapi3') ||
           (direction === ConversionDirection.SWAGGER_TO_OPENAPI && specType !== 'swagger2')) {
         const expectedType = direction === ConversionDirection.OPENAPI_TO_SWAGGER ? 'OpenAPI 3.x' : 'Swagger 2.0';
-        toast.warning(`The input doesn't appear to be a ${expectedType} specification. Conversion may fail.`);
+        throw new Error(`Expected ${expectedType} specification. Conversion cannot proceed.`);
       }
       
       const conversionResult = convertSpecification(yamlContent, direction);
@@ -115,7 +114,18 @@ const Index = () => {
   };
 
   const toggleDirection = (checked: boolean) => {
-    setDirection(checked ? ConversionDirection.SWAGGER_TO_OPENAPI : ConversionDirection.OPENAPI_TO_SWAGGER);
+    const newDirection = checked ? ConversionDirection.SWAGGER_TO_OPENAPI : ConversionDirection.OPENAPI_TO_SWAGGER;
+    setDirection(newDirection);
+    
+    // Clear the input if it exists and doesn't match the new direction
+    if (yamlContent) {
+      const specType = detectSpecType(yamlContent);
+      if ((newDirection === ConversionDirection.OPENAPI_TO_SWAGGER && specType !== 'openapi3') ||
+          (newDirection === ConversionDirection.SWAGGER_TO_OPENAPI && specType !== 'swagger2')) {
+        clearInput();
+      }
+    }
+    
     setSwaggerContent(null);
     setConversionWarnings([]);
   };
@@ -170,11 +180,18 @@ const Index = () => {
               </div>
               
               <TabsContent value="upload">
-                <FileUploader onFileUpload={handleFileUpload} />
+                <FileUploader 
+                  onFileUpload={handleFileUpload} 
+                  conversionDirection={direction}
+                />
               </TabsContent>
               
               <TabsContent value="paste">
-                <CodeInput onContentSubmit={handleContentSubmit} currentContent={yamlContent} />
+                <CodeInput 
+                  onContentSubmit={handleContentSubmit} 
+                  currentContent={yamlContent} 
+                  conversionDirection={direction}
+                />
               </TabsContent>
             </Tabs>
             
@@ -240,11 +257,18 @@ const Index = () => {
                     </div>
                     
                     <TabsContent value="upload">
-                      <FileUploader onFileUpload={handleFileUpload} />
+                      <FileUploader 
+                        onFileUpload={handleFileUpload} 
+                        conversionDirection={direction}
+                      />
                     </TabsContent>
                     
                     <TabsContent value="paste">
-                      <CodeInput onContentSubmit={handleContentSubmit} currentContent={yamlContent} />
+                      <CodeInput 
+                        onContentSubmit={handleContentSubmit} 
+                        currentContent={yamlContent} 
+                        conversionDirection={direction} 
+                      />
                     </TabsContent>
                   </Tabs>
                   

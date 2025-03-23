@@ -2,14 +2,15 @@
 import React, { useState, useRef } from 'react';
 import { toast } from 'sonner';
 import { Upload, FileIcon, X, ArrowRight } from 'lucide-react';
-import { isValidYaml, isValidJson, isOpenApi3, isSwagger2 } from '@/lib/converter';
+import { isValidYaml, isValidJson, isOpenApi3, isSwagger2, ConversionDirection } from '@/lib/converter';
 import * as yaml from 'js-yaml';
 
 interface FileUploaderProps {
   onFileUpload: (content: string, filename: string) => void;
+  conversionDirection?: ConversionDirection;
 }
 
-const FileUploader = ({ onFileUpload }: FileUploaderProps) => {
+const FileUploader = ({ onFileUpload, conversionDirection = ConversionDirection.OPENAPI_TO_SWAGGER }: FileUploaderProps) => {
   const [isDragging, setIsDragging] = useState(false);
   const [file, setFile] = useState<File | null>(null);
   const [loading, setLoading] = useState(false);
@@ -53,8 +54,14 @@ const FileUploader = ({ onFileUpload }: FileUploaderProps) => {
         
         const parsedJson = JSON.parse(content);
         
-        if (!isOpenApi3(parsedJson) && !isSwagger2(parsedJson)) {
-          toast.error('The file is not a recognized API specification (OpenAPI 3.x or Swagger 2.0)');
+        // Validate spec type matches the conversion direction
+        if (conversionDirection === ConversionDirection.OPENAPI_TO_SWAGGER && !isOpenApi3(parsedJson)) {
+          toast.error('Expected OpenAPI 3.x specification for OpenAPI to Swagger conversion');
+          setFile(null);
+          setLoading(false);
+          return;
+        } else if (conversionDirection === ConversionDirection.SWAGGER_TO_OPENAPI && !isSwagger2(parsedJson)) {
+          toast.error('Expected Swagger 2.0 specification for Swagger to OpenAPI conversion');
           setFile(null);
           setLoading(false);
           return;
@@ -75,8 +82,14 @@ const FileUploader = ({ onFileUpload }: FileUploaderProps) => {
         
         const parsedYaml = yaml.load(content) as any;
         
-        if (!isOpenApi3(parsedYaml) && !isSwagger2(parsedYaml)) {
-          toast.error('The file is not a recognized API specification (OpenAPI 3.x or Swagger 2.0)');
+        // Validate spec type matches the conversion direction
+        if (conversionDirection === ConversionDirection.OPENAPI_TO_SWAGGER && !isOpenApi3(parsedYaml)) {
+          toast.error('Expected OpenAPI 3.x specification for OpenAPI to Swagger conversion');
+          setFile(null);
+          setLoading(false);
+          return;
+        } else if (conversionDirection === ConversionDirection.SWAGGER_TO_OPENAPI && !isSwagger2(parsedYaml)) {
+          toast.error('Expected Swagger 2.0 specification for Swagger to OpenAPI conversion');
           setFile(null);
           setLoading(false);
           return;
@@ -172,9 +185,17 @@ const FileUploader = ({ onFileUpload }: FileUploaderProps) => {
             <div className="mb-4 p-3 rounded-full bg-primary/10">
               <Upload className="h-6 w-6 text-primary" />
             </div>
-            <p className="text-center mb-2 font-medium">Drag and drop your API specification file here</p>
+            <p className="text-center mb-2 font-medium">
+              {conversionDirection === ConversionDirection.SWAGGER_TO_OPENAPI
+                ? "Drag and drop your Swagger 2.0 file here"
+                : "Drag and drop your OpenAPI 3.x file here"}
+            </p>
             <p className="text-center text-sm text-muted-foreground">or click to browse</p>
-            <p className="text-center text-xs text-muted-foreground mt-2">Supports OpenAPI 3.x and Swagger 2.0 in YAML and JSON formats</p>
+            <p className="text-center text-xs text-muted-foreground mt-2">
+              {conversionDirection === ConversionDirection.SWAGGER_TO_OPENAPI
+                ? "Supports Swagger 2.0 in YAML and JSON formats"
+                : "Supports OpenAPI 3.x in YAML and JSON formats"}
+            </p>
           </div>
         )}
       </div>
