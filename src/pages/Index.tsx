@@ -1,5 +1,5 @@
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { toast } from 'sonner';
 import { useIsMobile } from '@/hooks/use-mobile';
 import FileUploader from '@/components/FileUploader';
@@ -18,6 +18,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { ResizablePanelGroup, ResizablePanel, ResizableHandle } from "@/components/ui/resizable";
 import { Switch } from "@/components/ui/switch";
 import { Label } from "@/components/ui/label";
+import { Button } from "@/components/ui/button";
 
 const Index = () => {
   const [isConverting, setIsConverting] = useState(false);
@@ -27,6 +28,7 @@ const Index = () => {
   const [inputMethod, setInputMethod] = useState<'upload' | 'paste'>('upload');
   const [conversionWarnings, setConversionWarnings] = useState<string[]>([]);
   const [direction, setDirection] = useState<ConversionDirection>(ConversionDirection.OPENAPI_TO_SWAGGER);
+  const [hasInput, setHasInput] = useState(false);
   const isMobile = useIsMobile();
 
   const handleFileUpload = (content: string, name: string) => {
@@ -34,6 +36,7 @@ const Index = () => {
     setFilename(name);
     setSwaggerContent(null);
     setConversionWarnings([]);
+    setHasInput(true);
     
     // Auto-detect spec type can be used for user convenience, but don't automatically
     // switch the direction to avoid confusion - we'll just validate based on current direction
@@ -47,6 +50,7 @@ const Index = () => {
       toast.error(`Expected ${expectedType} specification but detected ${actualType}`);
       setYamlContent(null);
       setFilename('');
+      setHasInput(false);
     }
   };
   
@@ -56,6 +60,11 @@ const Index = () => {
     setFilename(name);
     setSwaggerContent(null);
     setConversionWarnings([]);
+    setHasInput(true);
+  };
+  
+  const handleContentChange = (hasContent: boolean) => {
+    setHasInput(hasContent);
   };
 
   const clearInput = () => {
@@ -63,6 +72,7 @@ const Index = () => {
     setFilename('');
     setSwaggerContent(null);
     setConversionWarnings([]);
+    setHasInput(false);
   };
 
   const handleConvert = async () => {
@@ -148,13 +158,15 @@ const Index = () => {
               />
             </div>
             
-            {yamlContent && (
-              <button
+            {hasInput && (
+              <Button 
+                variant="outline" 
+                size="sm" 
                 onClick={clearInput}
-                className="glass-button px-3 py-1 flex items-center text-sm"
+                className="glass-button"
               >
                 <X className="h-4 w-4 mr-1" /> Clear Input
-              </button>
+              </Button>
             )}
           </div>
         </div>
@@ -183,6 +195,7 @@ const Index = () => {
                 <FileUploader 
                   onFileUpload={handleFileUpload} 
                   conversionDirection={direction}
+                  onContentChange={handleContentChange}
                 />
               </TabsContent>
               
@@ -191,6 +204,7 @@ const Index = () => {
                   onContentSubmit={handleContentSubmit} 
                   currentContent={yamlContent} 
                   conversionDirection={direction}
+                  onContentChange={handleContentChange}
                 />
               </TabsContent>
             </Tabs>
@@ -260,6 +274,7 @@ const Index = () => {
                       <FileUploader 
                         onFileUpload={handleFileUpload} 
                         conversionDirection={direction}
+                        onContentChange={handleContentChange}
                       />
                     </TabsContent>
                     
@@ -267,7 +282,8 @@ const Index = () => {
                       <CodeInput 
                         onContentSubmit={handleContentSubmit} 
                         currentContent={yamlContent} 
-                        conversionDirection={direction} 
+                        conversionDirection={direction}
+                        onContentChange={handleContentChange}
                       />
                     </TabsContent>
                   </Tabs>

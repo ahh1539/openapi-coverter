@@ -1,4 +1,3 @@
-
 import React, { useState, useRef } from 'react';
 import { toast } from 'sonner';
 import { Upload, FileIcon, X, ArrowRight } from 'lucide-react';
@@ -8,9 +7,14 @@ import * as yaml from 'js-yaml';
 interface FileUploaderProps {
   onFileUpload: (content: string, filename: string) => void;
   conversionDirection?: ConversionDirection;
+  onContentChange?: (hasContent: boolean) => void;
 }
 
-const FileUploader = ({ onFileUpload, conversionDirection = ConversionDirection.OPENAPI_TO_SWAGGER }: FileUploaderProps) => {
+const FileUploader = ({ 
+  onFileUpload, 
+  conversionDirection = ConversionDirection.OPENAPI_TO_SWAGGER,
+  onContentChange 
+}: FileUploaderProps) => {
   const [isDragging, setIsDragging] = useState(false);
   const [file, setFile] = useState<File | null>(null);
   const [loading, setLoading] = useState(false);
@@ -38,6 +42,7 @@ const FileUploader = ({ onFileUpload, conversionDirection = ConversionDirection.
         toast.error('Please upload a YAML or JSON file');
         setFile(null);
         setLoading(false);
+        if (onContentChange) onContentChange(false);
         return;
       }
       
@@ -49,6 +54,7 @@ const FileUploader = ({ onFileUpload, conversionDirection = ConversionDirection.
           toast.error('The file contains invalid JSON');
           setFile(null);
           setLoading(false);
+          if (onContentChange) onContentChange(false);
           return;
         }
         
@@ -59,11 +65,13 @@ const FileUploader = ({ onFileUpload, conversionDirection = ConversionDirection.
           toast.error('Expected OpenAPI 3.x specification for OpenAPI to Swagger conversion');
           setFile(null);
           setLoading(false);
+          if (onContentChange) onContentChange(false);
           return;
         } else if (conversionDirection === ConversionDirection.SWAGGER_TO_OPENAPI && !isSwagger2(parsedJson)) {
           toast.error('Expected Swagger 2.0 specification for Swagger to OpenAPI conversion');
           setFile(null);
           setLoading(false);
+          if (onContentChange) onContentChange(false);
           return;
         }
         
@@ -71,12 +79,14 @@ const FileUploader = ({ onFileUpload, conversionDirection = ConversionDirection.
         const yamlContent = yaml.dump(parsedJson);
         setFile(file);
         onFileUpload(yamlContent, file.name);
+        if (onContentChange) onContentChange(true);
       } else {
         // YAML processing
         if (!isValidYaml(content)) {
           toast.error('The file contains invalid YAML');
           setFile(null);
           setLoading(false);
+          if (onContentChange) onContentChange(false);
           return;
         }
         
@@ -87,21 +97,25 @@ const FileUploader = ({ onFileUpload, conversionDirection = ConversionDirection.
           toast.error('Expected OpenAPI 3.x specification for OpenAPI to Swagger conversion');
           setFile(null);
           setLoading(false);
+          if (onContentChange) onContentChange(false);
           return;
         } else if (conversionDirection === ConversionDirection.SWAGGER_TO_OPENAPI && !isSwagger2(parsedYaml)) {
           toast.error('Expected Swagger 2.0 specification for Swagger to OpenAPI conversion');
           setFile(null);
           setLoading(false);
+          if (onContentChange) onContentChange(false);
           return;
         }
         
         setFile(file);
         onFileUpload(content, file.name);
+        if (onContentChange) onContentChange(true);
       }
     } catch (error) {
       console.error('Error processing file:', error);
       toast.error('Error processing file. Please try again.');
       setFile(null);
+      if (onContentChange) onContentChange(false);
     } finally {
       setLoading(false);
     }
@@ -131,6 +145,7 @@ const FileUploader = ({ onFileUpload, conversionDirection = ConversionDirection.
     if (fileInputRef.current) {
       fileInputRef.current.value = '';
     }
+    if (onContentChange) onContentChange(false);
   };
 
   return (

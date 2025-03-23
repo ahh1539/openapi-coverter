@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect } from 'react';
 import { toast } from 'sonner';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -11,9 +10,15 @@ interface CodeInputProps {
   onContentSubmit: (content: string, type: string) => void;
   currentContent?: string | null;
   conversionDirection: ConversionDirection;
+  onContentChange?: (hasContent: boolean) => void;
 }
 
-const CodeInput = ({ onContentSubmit, currentContent = null, conversionDirection }: CodeInputProps) => {
+const CodeInput = ({ 
+  onContentSubmit, 
+  currentContent = null, 
+  conversionDirection,
+  onContentChange
+}: CodeInputProps) => {
   const [inputContent, setInputContent] = useState('');
   const [activeTab, setActiveTab] = useState('yaml');
   const [isLoading, setIsLoading] = useState(false);
@@ -39,6 +44,13 @@ const CodeInput = ({ onContentSubmit, currentContent = null, conversionDirection
       }
     }
   }, [currentContent]);
+
+  // Notify parent about content changes
+  useEffect(() => {
+    if (onContentChange) {
+      onContentChange(inputContent.trim().length > 0);
+    }
+  }, [inputContent, onContentChange]);
 
   // Validate input whenever content, active tab, or conversion direction changes
   useEffect(() => {
@@ -208,6 +220,10 @@ const CodeInput = ({ onContentSubmit, currentContent = null, conversionDirection
     }
   };
 
+  const handleInputChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
+    setInputContent(e.target.value);
+  };
+
   return (
     <div className="w-full max-w-xl mx-auto">
       <div className="glass-card p-6">
@@ -236,7 +252,7 @@ const CodeInput = ({ onContentSubmit, currentContent = null, conversionDirection
                 ? "Paste your Swagger 2.0 YAML here..."
                 : "Paste your OpenAPI 3.x YAML here..."}
               value={inputContent}
-              onChange={(e) => setInputContent(e.target.value)}
+              onChange={handleInputChange}
             />
           </TabsContent>
           
@@ -247,7 +263,7 @@ const CodeInput = ({ onContentSubmit, currentContent = null, conversionDirection
                 ? "Paste your Swagger 2.0 JSON here..."
                 : "Paste your OpenAPI 3.x JSON here..."}
               value={inputContent}
-              onChange={(e) => setInputContent(e.target.value)}
+              onChange={handleInputChange}
             />
           </TabsContent>
         </Tabs>
