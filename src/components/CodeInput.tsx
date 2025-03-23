@@ -1,9 +1,9 @@
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { toast } from 'sonner';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Textarea } from "@/components/ui/textarea";
-import { FileText, FileJson, ArrowRight } from 'lucide-react';
+import { FileText, FileJson, ArrowRight, AlertCircle } from 'lucide-react';
 import { isValidYaml, isValidJson, isOpenApi3, isSwagger2 } from '@/lib/converter';
 import * as yaml from 'js-yaml';
 
@@ -15,6 +15,70 @@ const CodeInput = ({ onContentSubmit }: CodeInputProps) => {
   const [inputContent, setInputContent] = useState('');
   const [activeTab, setActiveTab] = useState('yaml');
   const [isLoading, setIsLoading] = useState(false);
+  const [validationStatus, setValidationStatus] = useState<{
+    formatValid: boolean;
+    specTypeValid: boolean;
+    specType: string;
+    message: string;
+  } | null>(null);
+
+  // Validate input whenever content or active tab changes
+  useEffect(() => {
+    if (!inputContent.trim()) {
+      setValidationStatus(null);
+      return;
+    }
+    
+    validateInput(inputContent, activeTab);
+  }, [inputContent, activeTab]);
+  
+  const validateInput = (content: string, format: string) => {
+    // Check format validation (YAML or JSON)
+    let formatValid = false;
+    let parsedContent: any = null;
+    let specTypeValid = false;
+    let specType = 'unknown';
+    let message = '';
+    
+    if (format === 'yaml') {
+      if (!isValidYaml(content)) {
+        formatValid = false;
+        message = 'Invalid YAML format';
+      } else {
+        formatValid = true;
+        parsedContent = yaml.load(content);
+      }
+    } else if (format === 'json') {
+      try {
+        parsedContent = JSON.parse(content);
+        formatValid = true;
+      } catch (error) {
+        formatValid = false;
+        message = 'Invalid JSON format';
+      }
+    }
+    
+    // If format is valid, check specification type
+    if (formatValid && parsedContent) {
+      if (isOpenApi3(parsedContent)) {
+        specType = 'OpenAPI 3.x';
+        specTypeValid = true;
+      } else if (isSwagger2(parsedContent)) {
+        specType = 'Swagger 2.0';
+        specTypeValid = true;
+      } else {
+        specTypeValid = false;
+        message = 'Not a valid API specification (OpenAPI 3.x or Swagger 2.0)';
+      }
+    }
+    
+    setValidationStatus({
+      formatValid,
+      specTypeValid,
+      specType,
+      message
+    });
+  };
 
   const handleProcessContent = async () => {
     if (!inputContent.trim()) {
@@ -103,12 +167,32 @@ const CodeInput = ({ onContentSubmit }: CodeInputProps) => {
           </TabsContent>
         </Tabs>
         
+        {validationStatus && inputContent.trim() && (
+          <div className={`mt-3 p-2 rounded-md text-sm flex items-start gap-2 ${
+            validationStatus.formatValid && validationStatus.specTypeValid
+              ? 'bg-green-500/10 text-green-600'
+              : 'bg-amber-500/10 text-amber-600'
+          }`}>
+            {validationStatus.formatValid && validationStatus.specTypeValid ? (
+              <>
+                <FileText className="h-4 w-4 mt-0.5" />
+                <span>Valid {validationStatus.specType} specification in {activeTab.toUpperCase()} format</span>
+              </>
+            ) : (
+              <>
+                <AlertCircle className="h-4 w-4 mt-0.5" />
+                <span>{validationStatus.message}</span>
+              </>
+            )}
+          </div>
+        )}
+        
         <div className="mt-4">
           <button
             onClick={handleProcessContent}
-            disabled={isLoading || !inputContent.trim()}
+            disabled={isLoading || !inputContent.trim() || (validationStatus && (!validationStatus.formatValid || !validationStatus.specTypeValid))}
             className={`glass-button w-full px-6 py-3 font-medium flex items-center justify-center ${
-              isLoading || !inputContent.trim() ? 'opacity-70 cursor-not-allowed' : ''
+              isLoading || !inputContent.trim() || (validationStatus && (!validationStatus.formatValid || !validationStatus.specTypeValid)) ? 'opacity-70 cursor-not-allowed' : ''
             }`}
           >
             {isLoading ? (
