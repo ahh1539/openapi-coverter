@@ -60,6 +60,23 @@ interface SwaggerSpec {
   securityDefinitions?: Record<string, any>;
 }
 
+// Define interfaces for Swagger operation and response objects
+interface SwaggerOperation {
+  summary?: string;
+  description?: string;
+  operationId?: string;
+  tags?: string[];
+  parameters?: any[];
+  responses?: Record<string, SwaggerResponse>;
+  consumes?: string[];
+  produces?: string[];
+}
+
+interface SwaggerResponse {
+  description?: string;
+  schema?: any;
+}
+
 // Enum for conversion directions
 export enum ConversionDirection {
   OPENAPI_TO_SWAGGER = 'openapi-to-swagger',
@@ -169,14 +186,16 @@ export function detectSwaggerUnsupportedFeatures(swaggerSpec: SwaggerSpec): stri
       for (const [method, operation] of Object.entries(pathItem)) {
         if (method === 'parameters') continue;
         
+        const op = operation as SwaggerOperation;
+        
         // Check for formData parameters
-        const hasFormData = (operation.parameters || []).some((param: any) => param.in === 'formData');
+        const hasFormData = (op.parameters || []).some((param: any) => param.in === 'formData');
         if (hasFormData) {
           warnings.push(`formData parameters in ${method.toUpperCase()} ${path} will be converted to requestBody with content type application/x-www-form-urlencoded or multipart/form-data.`);
         }
         
         // Check for body parameters with non-JSON content types
-        const bodyParams = (operation.parameters || []).filter((param: any) => param.in === 'body');
+        const bodyParams = (op.parameters || []).filter((param: any) => param.in === 'body');
         if (bodyParams.length > 0 && (!swaggerSpec.consumes || !swaggerSpec.consumes.includes('application/json'))) {
           warnings.push(`Body parameters in ${method.toUpperCase()} ${path} with non-JSON content types will be converted to appropriate request body media types.`);
         }
@@ -314,7 +333,7 @@ export function convertSwaggerToOpenApi(yamlContent: string): { content: string;
           if (method === 'parameters') continue;
           
           openApiPath[method] = convertSwaggerOperationToOpenApi(
-            operation as any,
+            operation as SwaggerOperation,
             swaggerSpec.consumes || ['application/json'],
             swaggerSpec.produces || ['application/json']
           );
@@ -346,7 +365,7 @@ function buildServerUrl(swaggerSpec: SwaggerSpec): string {
 }
 
 // Convert Swagger operation to OpenAPI operation
-function convertSwaggerOperationToOpenApi(operation: any, globalConsumes: string[], globalProduces: string[]): any {
+function convertSwaggerOperationToOpenApi(operation: SwaggerOperation, globalConsumes: string[], globalProduces: string[]): any {
   const openApiOperation: any = {
     summary: operation.summary,
     description: operation.description,
