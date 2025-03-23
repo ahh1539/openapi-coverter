@@ -1,4 +1,4 @@
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import { toast } from 'sonner';
 import { Upload, FileIcon, X, ArrowRight } from 'lucide-react';
 import { isValidYaml, isValidJson, isOpenApi3, isSwagger2, ConversionDirection } from '@/lib/converter';
@@ -19,6 +19,16 @@ const FileUploader = ({
   const [file, setFile] = useState<File | null>(null);
   const [loading, setLoading] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    setFile(null);
+    setIsDragging(false);
+    setLoading(false);
+    if (fileInputRef.current) {
+      fileInputRef.current.value = '';
+    }
+    if (onContentChange) onContentChange(false);
+  }, []);
 
   const handleDragOver = (e: React.DragEvent<HTMLDivElement>) => {
     e.preventDefault();
@@ -48,7 +58,6 @@ const FileUploader = ({
       
       const content = await file.text();
       
-      // Process based on file type
       if (fileExtension === 'json') {
         if (!isValidJson(content)) {
           toast.error('The file contains invalid JSON');
@@ -60,7 +69,6 @@ const FileUploader = ({
         
         const parsedJson = JSON.parse(content);
         
-        // Validate spec type matches the conversion direction
         if (conversionDirection === ConversionDirection.OPENAPI_TO_SWAGGER && !isOpenApi3(parsedJson)) {
           toast.error('Expected OpenAPI 3.x specification for OpenAPI to Swagger conversion');
           setFile(null);
@@ -75,13 +83,11 @@ const FileUploader = ({
           return;
         }
         
-        // Convert JSON to YAML for processing
         const yamlContent = yaml.dump(parsedJson);
         setFile(file);
         onFileUpload(yamlContent, file.name);
         if (onContentChange) onContentChange(true);
       } else {
-        // YAML processing
         if (!isValidYaml(content)) {
           toast.error('The file contains invalid YAML');
           setFile(null);
@@ -92,7 +98,6 @@ const FileUploader = ({
         
         const parsedYaml = yaml.load(content) as any;
         
-        // Validate spec type matches the conversion direction
         if (conversionDirection === ConversionDirection.OPENAPI_TO_SWAGGER && !isOpenApi3(parsedYaml)) {
           toast.error('Expected OpenAPI 3.x specification for OpenAPI to Swagger conversion');
           setFile(null);

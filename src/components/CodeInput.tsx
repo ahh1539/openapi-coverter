@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect } from 'react';
 import { toast } from 'sonner';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -28,6 +29,13 @@ const CodeInput = ({
     specType: string;
     message: string;
   } | null>(null);
+
+  // Reset input when component gets a new key
+  useEffect(() => {
+    setInputContent('');
+    setValidationStatus(null);
+    if (onContentChange) onContentChange(false);
+  }, []);
 
   // Set input content when currentContent prop changes
   useEffect(() => {

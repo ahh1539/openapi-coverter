@@ -29,6 +29,7 @@ const Index = () => {
   const [conversionWarnings, setConversionWarnings] = useState<string[]>([]);
   const [direction, setDirection] = useState<ConversionDirection>(ConversionDirection.OPENAPI_TO_SWAGGER);
   const [hasInput, setHasInput] = useState(false);
+  const [resetKey, setResetKey] = useState(0); // New state to force re-render of child components
   const isMobile = useIsMobile();
 
   const handleFileUpload = (content: string, name: string) => {
@@ -73,6 +74,7 @@ const Index = () => {
     setSwaggerContent(null);
     setConversionWarnings([]);
     setHasInput(false);
+    setResetKey(prev => prev + 1); // Increment key to force re-render of child components
   };
 
   const handleConvert = async () => {
@@ -193,6 +195,7 @@ const Index = () => {
               
               <TabsContent value="upload">
                 <FileUploader 
+                  key={`file-uploader-${resetKey}`} 
                   onFileUpload={handleFileUpload} 
                   conversionDirection={direction}
                   onContentChange={handleContentChange}
@@ -201,6 +204,7 @@ const Index = () => {
               
               <TabsContent value="paste">
                 <CodeInput 
+                  key={`code-input-${resetKey}`}
                   onContentSubmit={handleContentSubmit} 
                   currentContent={yamlContent} 
                   conversionDirection={direction}
@@ -272,6 +276,7 @@ const Index = () => {
                     
                     <TabsContent value="upload">
                       <FileUploader 
+                        key={`file-uploader-${resetKey}`}
                         onFileUpload={handleFileUpload} 
                         conversionDirection={direction}
                         onContentChange={handleContentChange}
@@ -280,6 +285,7 @@ const Index = () => {
                     
                     <TabsContent value="paste">
                       <CodeInput 
+                        key={`code-input-${resetKey}`}
                         onContentSubmit={handleContentSubmit} 
                         currentContent={yamlContent} 
                         conversionDirection={direction}
