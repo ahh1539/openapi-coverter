@@ -58,12 +58,31 @@ const CodeInput = ({ onContentSubmit, currentContent = null }: CodeInputProps) =
     let message = '';
     
     if (format === 'yaml') {
+      // Check if it's valid YAML format
       if (!isValidYaml(content)) {
         formatValid = false;
         message = 'Invalid YAML format';
       } else {
-        formatValid = true;
-        parsedContent = yaml.load(content);
+        // Additionally check if it's not actually JSON masquerading as YAML
+        try {
+          // If this succeeds, it's valid JSON, we should check if the content would be different when parsed as YAML
+          const jsonParsed = JSON.parse(content);
+          const yamlParsed = yaml.load(content);
+          
+          // If JSON parsing works and produces the same output as YAML parsing,
+          // it's likely that this is JSON content in the YAML tab
+          if (JSON.stringify(jsonParsed) === JSON.stringify(yamlParsed) && content.includes('{') && content.includes('"')) {
+            formatValid = false;
+            message = 'JSON format detected. Please use the JSON tab for this content';
+          } else {
+            formatValid = true;
+            parsedContent = yamlParsed;
+          }
+        } catch (error) {
+          // If JSON.parse fails, it's valid YAML but not valid JSON, which is fine for YAML tab
+          formatValid = true;
+          parsedContent = yaml.load(content);
+        }
       }
     } else if (format === 'json') {
       try {
@@ -128,6 +147,17 @@ const CodeInput = ({ onContentSubmit, currentContent = null }: CodeInputProps) =
           toast.error('Invalid YAML format');
           setIsLoading(false);
           return;
+        }
+        
+        try {
+          // Double-check if it's not JSON in YAML tab
+          JSON.parse(inputContent);
+          toast.error('JSON detected in YAML tab. Please use the JSON tab for this content');
+          setIsLoading(false);
+          return;
+        } catch (e) {
+          // This is correct - it should not be valid JSON when in YAML tab
+          // (unless it's also valid YAML, which is handled by the validation)
         }
         
         const parsedYaml = yaml.load(inputContent) as any;
