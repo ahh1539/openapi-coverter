@@ -1,8 +1,54 @@
 
 import * as yaml from 'js-yaml';
 
+// Define TypeScript interfaces for OpenAPI objects
+interface OpenAPIOperation {
+  summary?: string;
+  description?: string;
+  operationId?: string;
+  tags?: string[];
+  requestBody?: {
+    required?: boolean;
+    description?: string;
+    content?: Record<string, { schema?: any }>;
+  };
+  responses?: Record<string, {
+    description?: string;
+    content?: Record<string, { schema?: any }>;
+  }>;
+  parameters?: any[];
+}
+
+interface OpenAPIPathItem {
+  parameters?: any[];
+  $ref?: string;
+  summary?: string;
+  description?: string;
+  get?: OpenAPIOperation;
+  put?: OpenAPIOperation;
+  post?: OpenAPIOperation;
+  delete?: OpenAPIOperation;
+  options?: OpenAPIOperation;
+  head?: OpenAPIOperation;
+  patch?: OpenAPIOperation;
+  trace?: OpenAPIOperation;
+}
+
+interface OpenAPISpec {
+  openapi: string;
+  info: any;
+  servers?: { url: string }[];
+  paths?: Record<string, OpenAPIPathItem>;
+  components?: {
+    schemas?: Record<string, any>;
+    securitySchemes?: Record<string, any>;
+    callbacks?: any;
+    links?: any;
+  };
+}
+
 // Detect OpenAPI 3.x features that aren't fully supported in Swagger 2.0
-export function detectUnsupportedFeatures(openApiSpec: any): string[] {
+export function detectUnsupportedFeatures(openApiSpec: OpenAPISpec): string[] {
   const warnings: string[] = [];
   
   // Check for callbacks (not supported in Swagger 2.0)
@@ -31,17 +77,18 @@ export function detectUnsupportedFeatures(openApiSpec: any): string[] {
   
   // Check for multiple content types in request bodies
   if (openApiSpec.paths) {
-    for (const [path, methods] of Object.entries(openApiSpec.paths as any)) {
-      for (const [method, operation] of Object.entries(methods as any)) {
+    for (const [path, pathItem] of Object.entries(openApiSpec.paths)) {
+      for (const [method, operation] of Object.entries(pathItem as any)) {
         if (method === 'parameters' || method === '$ref') continue;
         
-        if (operation.requestBody?.content && Object.keys(operation.requestBody.content).length > 1) {
+        const op = operation as OpenAPIOperation;
+        if (op.requestBody?.content && Object.keys(op.requestBody.content).length > 1) {
           warnings.push(`Multiple request content types in ${method.toUpperCase()} ${path} will be consolidated to a single schema.`);
         }
         
         // Check for responses with multiple content types
-        if (operation.responses) {
-          for (const [statusCode, response] of Object.entries(operation.responses as any)) {
+        if (op.responses) {
+          for (const [statusCode, response] of Object.entries(op.responses)) {
             if (response.content && Object.keys(response.content).length > 1) {
               warnings.push(`Multiple response content types for status ${statusCode} in ${method.toUpperCase()} ${path} will be consolidated.`);
             }
@@ -63,8 +110,9 @@ export function detectUnsupportedFeatures(openApiSpec: any): string[] {
       for (const [method, operation] of Object.entries(pathItem as any)) {
         if (method === 'parameters' || method === '$ref') continue;
         
-        if (operation.parameters) {
-          for (const param of operation.parameters) {
+        const op = operation as OpenAPIOperation;
+        if (op.parameters) {
+          for (const param of op.parameters) {
             if (param.in === 'cookie') {
               hasCookieParams = true;
               break;
@@ -87,7 +135,7 @@ export function detectUnsupportedFeatures(openApiSpec: any): string[] {
 export function convertOpenApiToSwagger(yamlContent: string): { content: string; warnings: string[] } {
   try {
     // Parse the YAML content to JavaScript object
-    const openApiSpec = yaml.load(yamlContent) as any;
+    const openApiSpec = yaml.load(yamlContent) as OpenAPISpec;
     
     // Validate if it's an OpenAPI spec
     if (!openApiSpec.openapi || !openApiSpec.openapi.startsWith('3.')) {
@@ -143,7 +191,7 @@ export function convertOpenApiToSwagger(yamlContent: string): { content: string;
         for (const [method, operation] of Object.entries(pathItem as any)) {
           if (method === 'parameters' || method === '$ref') continue;
           
-          swaggerPath[method] = convertOperation(operation as any);
+          swaggerPath[method] = convertOperation(operation as OpenAPIOperation);
         }
       }
     }
@@ -196,7 +244,7 @@ function convertSecurityScheme(scheme: any): any {
 }
 
 // Convert OpenAPI operation to Swagger operation
-function convertOperation(operation: any): any {
+function convertOperation(operation: OpenAPIOperation): any {
   const result: any = {
     summary: operation.summary,
     description: operation.description,
@@ -269,19 +317,17 @@ function convertOperation(operation: any): any {
   if (operation.responses) {
     for (const [code, response] of Object.entries(operation.responses)) {
       result.responses[code] = {
-        description: (response as any).description || '',
+        description: response.description || '',
       };
       
-      const responseObj = response as any;
-      
-      if (responseObj.content) {
+      if (response.content) {
         // Prefer application/json, but fall back to first available format
-        const contentType = responseObj.content['application/json'] 
+        const contentType = response.content['application/json'] 
           ? 'application/json' 
-          : Object.keys(responseObj.content)[0];
+          : Object.keys(response.content)[0];
           
-        if (contentType && responseObj.content[contentType].schema) {
-          result.responses[code].schema = responseObj.content[contentType].schema;
+        if (contentType && response.content[contentType].schema) {
+          result.responses[code].schema = response.content[contentType].schema;
         }
       }
     }
