@@ -2,7 +2,7 @@
 import React, { useState, useRef } from 'react';
 import { toast } from 'sonner';
 import { Upload, FileIcon, X, ArrowRight } from 'lucide-react';
-import { isValidYaml, isOpenApi3 } from '@/lib/converter';
+import { isValidYaml, isValidJson, isOpenApi3 } from '@/lib/converter';
 import * as yaml from 'js-yaml';
 
 interface FileUploaderProps {
@@ -31,8 +31,10 @@ const FileUploader = ({ onFileUpload }: FileUploaderProps) => {
     try {
       setLoading(true);
       
-      if (!file.name.endsWith('.yaml') && !file.name.endsWith('.yml')) {
-        toast.error('Please upload a YAML file');
+      const fileExtension = file.name.split('.').pop()?.toLowerCase();
+      
+      if (!['yaml', 'yml', 'json'].includes(fileExtension || '')) {
+        toast.error('Please upload a YAML or JSON file');
         setFile(null);
         setLoading(false);
         return;
@@ -40,24 +42,49 @@ const FileUploader = ({ onFileUpload }: FileUploaderProps) => {
       
       const content = await file.text();
       
-      if (!isValidYaml(content)) {
-        toast.error('The file contains invalid YAML');
-        setFile(null);
-        setLoading(false);
-        return;
+      // Process based on file type
+      if (fileExtension === 'json') {
+        if (!isValidJson(content)) {
+          toast.error('The file contains invalid JSON');
+          setFile(null);
+          setLoading(false);
+          return;
+        }
+        
+        const parsedJson = JSON.parse(content);
+        
+        if (!isOpenApi3(parsedJson)) {
+          toast.error('The file is not an OpenAPI 3.x specification');
+          setFile(null);
+          setLoading(false);
+          return;
+        }
+        
+        // Convert JSON to YAML for processing
+        const yamlContent = yaml.dump(parsedJson);
+        setFile(file);
+        onFileUpload(yamlContent, file.name);
+      } else {
+        // YAML processing
+        if (!isValidYaml(content)) {
+          toast.error('The file contains invalid YAML');
+          setFile(null);
+          setLoading(false);
+          return;
+        }
+        
+        const parsedYaml = yaml.load(content) as any;
+        
+        if (!isOpenApi3(parsedYaml)) {
+          toast.error('The file is not an OpenAPI 3.x specification');
+          setFile(null);
+          setLoading(false);
+          return;
+        }
+        
+        setFile(file);
+        onFileUpload(content, file.name);
       }
-      
-      const parsedYaml = yaml.load(content) as any;
-      
-      if (!isOpenApi3(parsedYaml)) {
-        toast.error('The file is not an OpenAPI 3.x specification');
-        setFile(null);
-        setLoading(false);
-        return;
-      }
-      
-      setFile(file);
-      onFileUpload(content, file.name);
     } catch (error) {
       console.error('Error processing file:', error);
       toast.error('Error processing file. Please try again.');
@@ -108,7 +135,7 @@ const FileUploader = ({ onFileUpload }: FileUploaderProps) => {
           type="file"
           ref={fileInputRef}
           onChange={handleFileChange}
-          accept=".yaml,.yml"
+          accept=".yaml,.yml,.json"
           className="hidden"
           disabled={loading}
         />
@@ -145,8 +172,9 @@ const FileUploader = ({ onFileUpload }: FileUploaderProps) => {
             <div className="mb-4 p-3 rounded-full bg-primary/10">
               <Upload className="h-6 w-6 text-primary" />
             </div>
-            <p className="text-center mb-2 font-medium">Drag and drop your OpenAPI 3.x YAML file here</p>
+            <p className="text-center mb-2 font-medium">Drag and drop your OpenAPI 3.x file here</p>
             <p className="text-center text-sm text-muted-foreground">or click to browse</p>
+            <p className="text-center text-xs text-muted-foreground mt-2">Supports YAML and JSON formats</p>
           </div>
         )}
       </div>

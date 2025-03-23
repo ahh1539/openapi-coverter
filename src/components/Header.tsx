@@ -22,7 +22,8 @@ const Header = () => {
             </span>
           </h2>
           <p className="text-muted-foreground max-w-lg mx-auto">
-            A simple, elegant tool to convert your OpenAPI 3.x YAML specifications to Swagger 2.0 format with ease.
+            A simple, elegant tool to convert your OpenAPI 3.x specifications to Swagger 2.0 format with ease.
+            Upload YAML/JSON files or paste your specification directly.
           </p>
         </div>
       </div>

@@ -1,8 +1,90 @@
 
 import * as yaml from 'js-yaml';
 
+// Detect OpenAPI 3.x features that aren't fully supported in Swagger 2.0
+export function detectUnsupportedFeatures(openApiSpec: any): string[] {
+  const warnings: string[] = [];
+  
+  // Check for callbacks (not supported in Swagger 2.0)
+  if (openApiSpec.components?.callbacks) {
+    warnings.push('Callbacks are not supported in Swagger 2.0 and will be removed.');
+  }
+  
+  // Check for links (not supported in Swagger 2.0)
+  if (openApiSpec.components?.links) {
+    warnings.push('Links are not supported in Swagger 2.0 and will be removed.');
+  }
+  
+  // Check for oneOf, anyOf, allOf in schemas
+  if (openApiSpec.components?.schemas) {
+    const schemas = Object.values(openApiSpec.components.schemas) as any[];
+    
+    for (const schema of schemas) {
+      if (schema.oneOf) {
+        warnings.push('oneOf schemas will be simplified to the first schema in the list.');
+      }
+      if (schema.anyOf) {
+        warnings.push('anyOf schemas will be simplified to the first schema in the list.');
+      }
+    }
+  }
+  
+  // Check for multiple content types in request bodies
+  if (openApiSpec.paths) {
+    for (const [path, methods] of Object.entries(openApiSpec.paths as any)) {
+      for (const [method, operation] of Object.entries(methods as any)) {
+        if (method === 'parameters' || method === '$ref') continue;
+        
+        if (operation.requestBody?.content && Object.keys(operation.requestBody.content).length > 1) {
+          warnings.push(`Multiple request content types in ${method.toUpperCase()} ${path} will be consolidated to a single schema.`);
+        }
+        
+        // Check for responses with multiple content types
+        if (operation.responses) {
+          for (const [statusCode, response] of Object.entries(operation.responses as any)) {
+            if (response.content && Object.keys(response.content).length > 1) {
+              warnings.push(`Multiple response content types for status ${statusCode} in ${method.toUpperCase()} ${path} will be consolidated.`);
+            }
+          }
+        }
+      }
+    }
+  }
+  
+  // Check for multiple servers
+  if (openApiSpec.servers && openApiSpec.servers.length > 1) {
+    warnings.push('Multiple servers defined. Only the first one will be used in the converted Swagger 2.0 specification.');
+  }
+  
+  // Check for cookie parameters
+  let hasCookieParams = false;
+  if (openApiSpec.paths) {
+    for (const pathItem of Object.values(openApiSpec.paths)) {
+      for (const [method, operation] of Object.entries(pathItem as any)) {
+        if (method === 'parameters' || method === '$ref') continue;
+        
+        if (operation.parameters) {
+          for (const param of operation.parameters) {
+            if (param.in === 'cookie') {
+              hasCookieParams = true;
+              break;
+            }
+          }
+        }
+      }
+      if (hasCookieParams) break;
+    }
+  }
+  
+  if (hasCookieParams) {
+    warnings.push('Cookie parameters are not supported in Swagger 2.0 and will be converted to header parameters.');
+  }
+  
+  return warnings;
+}
+
 // Convert OpenAPI 3.x to Swagger 2.0
-export function convertOpenApiToSwagger(yamlContent: string): string {
+export function convertOpenApiToSwagger(yamlContent: string): { content: string; warnings: string[] } {
   try {
     // Parse the YAML content to JavaScript object
     const openApiSpec = yaml.load(yamlContent) as any;
@@ -11,6 +93,9 @@ export function convertOpenApiToSwagger(yamlContent: string): string {
     if (!openApiSpec.openapi || !openApiSpec.openapi.startsWith('3.')) {
       throw new Error('The provided file is not a valid OpenAPI 3.x specification');
     }
+    
+    // Detect unsupported features and generate warnings
+    const warnings = detectUnsupportedFeatures(openApiSpec);
     
     // Create base Swagger 2.0 structure
     const swaggerSpec: any = {
@@ -64,7 +149,10 @@ export function convertOpenApiToSwagger(yamlContent: string): string {
     }
     
     // Convert to YAML
-    return yaml.dump(swaggerSpec);
+    return { 
+      content: yaml.dump(swaggerSpec),
+      warnings 
+    };
   } catch (error) {
     console.error('Conversion error:', error);
     throw error;
@@ -122,7 +210,7 @@ function convertOperation(operation: any): any {
     result.parameters = operation.parameters.map((param: any) => {
       const converted: any = {
         name: param.name,
-        in: param.in,
+        in: param.in === 'cookie' ? 'header' : param.in, // Convert cookie params to header
         description: param.description,
         required: param.required,
       };
@@ -162,6 +250,12 @@ function convertOperation(operation: any): any {
     
     if (operation.requestBody.content && operation.requestBody.content['application/json']) {
       bodyParam.schema = operation.requestBody.content['application/json'].schema;
+    } else if (operation.requestBody.content) {
+      // If application/json is not available, use the first content type
+      const firstContentType = Object.keys(operation.requestBody.content)[0];
+      if (firstContentType) {
+        bodyParam.schema = operation.requestBody.content[firstContentType].schema;
+      }
     }
     
     if (!result.parameters) {
@@ -180,8 +274,15 @@ function convertOperation(operation: any): any {
       
       const responseObj = response as any;
       
-      if (responseObj.content && responseObj.content['application/json'] && responseObj.content['application/json'].schema) {
-        result.responses[code].schema = responseObj.content['application/json'].schema;
+      if (responseObj.content) {
+        // Prefer application/json, but fall back to first available format
+        const contentType = responseObj.content['application/json'] 
+          ? 'application/json' 
+          : Object.keys(responseObj.content)[0];
+          
+        if (contentType && responseObj.content[contentType].schema) {
+          result.responses[code].schema = responseObj.content[contentType].schema;
+        }
       }
     }
   }
@@ -193,6 +294,16 @@ function convertOperation(operation: any): any {
 export function isValidYaml(content: string): boolean {
   try {
     yaml.load(content);
+    return true;
+  } catch (e) {
+    return false;
+  }
+}
+
+// Validate if a string is a valid JSON
+export function isValidJson(content: string): boolean {
+  try {
+    JSON.parse(content);
     return true;
   } catch (e) {
     return false;
