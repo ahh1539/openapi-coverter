@@ -1,6 +1,7 @@
 
 import React, { useState } from 'react';
 import { toast } from 'sonner';
+import { useIsMobile } from '@/hooks/use-mobile';
 import FileUploader from '@/components/FileUploader';
 import ConversionResult from '@/components/ConversionResult';
 import ConversionWarnings from '@/components/ConversionWarnings';
@@ -10,6 +11,7 @@ import Footer from '@/components/Footer';
 import { convertOpenApiToSwagger } from '@/lib/converter';
 import { ArrowRight, Upload } from 'lucide-react';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { ResizablePanelGroup, ResizablePanel, ResizableHandle } from "@/components/ui/resizable";
 
 const Index = () => {
   const [isConverting, setIsConverting] = useState(false);
@@ -18,6 +20,7 @@ const Index = () => {
   const [filename, setFilename] = useState<string>('');
   const [inputMethod, setInputMethod] = useState<'upload' | 'paste'>('upload');
   const [conversionWarnings, setConversionWarnings] = useState<string[]>([]);
+  const isMobile = useIsMobile();
 
   const handleFileUpload = (content: string, name: string) => {
     setYamlContent(content);
@@ -62,68 +65,153 @@ const Index = () => {
     <div className="min-h-screen flex flex-col">
       <Header />
       
-      <main className="flex-1 w-full max-w-4xl mx-auto px-6 pb-12">
-        <div className="w-full">
-          <Tabs defaultValue="upload" value={inputMethod} onValueChange={(v) => setInputMethod(v as 'upload' | 'paste')}>
-            <div className="flex justify-center mb-8">
-              <TabsList className="glass">
-                <TabsTrigger value="upload" className="flex items-center gap-2">
-                  <Upload className="h-4 w-4" />
-                  Upload File
-                </TabsTrigger>
-                <TabsTrigger value="paste" className="flex items-center gap-2">
-                  <svg width="15" height="15" viewBox="0 0 15 15" fill="none" xmlns="http://www.w3.org/2000/svg" className="h-4 w-4">
-                    <path d="M5 2V1H10V2H5Z" fill="currentColor" />
-                    <path d="M3 3H12V14H3V3Z" fill="currentColor" />
-                  </svg>
-                  Paste Code
-                </TabsTrigger>
-              </TabsList>
-            </div>
+      <main className="flex-1 w-full mx-auto px-6 pb-12">
+        {isMobile ? (
+          // Mobile layout (stacked)
+          <div className="w-full max-w-4xl mx-auto">
+            <Tabs defaultValue="upload" value={inputMethod} onValueChange={(v) => setInputMethod(v as 'upload' | 'paste')}>
+              <div className="flex justify-center mb-8">
+                <TabsList className="glass">
+                  <TabsTrigger value="upload" className="flex items-center gap-2">
+                    <Upload className="h-4 w-4" />
+                    Upload File
+                  </TabsTrigger>
+                  <TabsTrigger value="paste" className="flex items-center gap-2">
+                    <svg width="15" height="15" viewBox="0 0 15 15" fill="none" xmlns="http://www.w3.org/2000/svg" className="h-4 w-4">
+                      <path d="M5 2V1H10V2H5Z" fill="currentColor" />
+                      <path d="M3 3H12V14H3V3Z" fill="currentColor" />
+                    </svg>
+                    Paste Code
+                  </TabsTrigger>
+                </TabsList>
+              </div>
+              
+              <TabsContent value="upload">
+                <FileUploader onFileUpload={handleFileUpload} />
+              </TabsContent>
+              
+              <TabsContent value="paste">
+                <CodeInput onContentSubmit={handleContentSubmit} />
+              </TabsContent>
+            </Tabs>
             
-            <TabsContent value="upload">
-              <FileUploader onFileUpload={handleFileUpload} />
-            </TabsContent>
+            {yamlContent && (
+              <div className="mt-8 flex justify-center animate-fade-in">
+                <button
+                  onClick={handleConvert}
+                  disabled={isConverting}
+                  className={`glass-button px-6 py-3 font-medium flex items-center justify-center ${
+                    isConverting ? 'opacity-70 cursor-not-allowed' : ''
+                  }`}
+                >
+                  {isConverting ? (
+                    <>
+                      <div className="animate-spin h-4 w-4 mr-2 border-2 border-current border-t-transparent rounded-full"></div>
+                      Converting...
+                    </>
+                  ) : (
+                    <>
+                      Convert to Swagger 2.0
+                      <ArrowRight className="ml-2 h-4 w-4" />
+                    </>
+                  )}
+                </button>
+              </div>
+            )}
             
-            <TabsContent value="paste">
-              <CodeInput onContentSubmit={handleContentSubmit} />
-            </TabsContent>
-          </Tabs>
-          
-          {yamlContent && (
-            <div className="mt-8 flex justify-center animate-fade-in">
-              <button
-                onClick={handleConvert}
-                disabled={isConverting}
-                className={`glass-button px-6 py-3 font-medium flex items-center justify-center ${
-                  isConverting ? 'opacity-70 cursor-not-allowed' : ''
-                }`}
-              >
-                {isConverting ? (
-                  <>
-                    <div className="animate-spin h-4 w-4 mr-2 border-2 border-current border-t-transparent rounded-full"></div>
-                    Converting...
-                  </>
-                ) : (
-                  <>
-                    Convert to Swagger 2.0
-                    <ArrowRight className="ml-2 h-4 w-4" />
-                  </>
-                )}
-              </button>
-            </div>
-          )}
-          
-          {conversionWarnings.length > 0 && (
-            <ConversionWarnings warnings={conversionWarnings} />
-          )}
-          
-          {swaggerContent && (
-            <div className="mt-8">
-              <ConversionResult content={swaggerContent} filename={filename} />
-            </div>
-          )}
-        </div>
+            {conversionWarnings.length > 0 && (
+              <ConversionWarnings warnings={conversionWarnings} />
+            )}
+            
+            {swaggerContent && (
+              <div className="mt-8">
+                <ConversionResult content={swaggerContent} filename={filename} />
+              </div>
+            )}
+          </div>
+        ) : (
+          // Desktop layout (side by side)
+          <div className="w-full max-w-[1280px] mx-auto">
+            <ResizablePanelGroup direction="horizontal" className="min-h-[600px]">
+              {/* Input panel */}
+              <ResizablePanel defaultSize={50} minSize={30}>
+                <div className="h-full p-4">
+                  <Tabs defaultValue="upload" value={inputMethod} onValueChange={(v) => setInputMethod(v as 'upload' | 'paste')}>
+                    <div className="flex justify-center mb-8">
+                      <TabsList className="glass">
+                        <TabsTrigger value="upload" className="flex items-center gap-2">
+                          <Upload className="h-4 w-4" />
+                          Upload File
+                        </TabsTrigger>
+                        <TabsTrigger value="paste" className="flex items-center gap-2">
+                          <svg width="15" height="15" viewBox="0 0 15 15" fill="none" xmlns="http://www.w3.org/2000/svg" className="h-4 w-4">
+                            <path d="M5 2V1H10V2H5Z" fill="currentColor" />
+                            <path d="M3 3H12V14H3V3Z" fill="currentColor" />
+                          </svg>
+                          Paste Code
+                        </TabsTrigger>
+                      </TabsList>
+                    </div>
+                    
+                    <TabsContent value="upload">
+                      <FileUploader onFileUpload={handleFileUpload} />
+                    </TabsContent>
+                    
+                    <TabsContent value="paste">
+                      <CodeInput onContentSubmit={handleContentSubmit} />
+                    </TabsContent>
+                  </Tabs>
+                  
+                  {yamlContent && (
+                    <div className="mt-8 flex justify-center animate-fade-in">
+                      <button
+                        onClick={handleConvert}
+                        disabled={isConverting}
+                        className={`glass-button px-6 py-3 font-medium flex items-center justify-center ${
+                          isConverting ? 'opacity-70 cursor-not-allowed' : ''
+                        }`}
+                      >
+                        {isConverting ? (
+                          <>
+                            <div className="animate-spin h-4 w-4 mr-2 border-2 border-current border-t-transparent rounded-full"></div>
+                            Converting...
+                          </>
+                        ) : (
+                          <>
+                            Convert to Swagger 2.0
+                            <ArrowRight className="ml-2 h-4 w-4" />
+                          </>
+                        )}
+                      </button>
+                    </div>
+                  )}
+                </div>
+              </ResizablePanel>
+              
+              {/* Resizable handle */}
+              <ResizableHandle withHandle />
+              
+              {/* Output panel */}
+              <ResizablePanel defaultSize={50} minSize={30}>
+                <div className="h-full p-4 overflow-y-auto flex flex-col gap-6">
+                  {conversionWarnings.length > 0 && (
+                    <ConversionWarnings warnings={conversionWarnings} />
+                  )}
+                  
+                  {swaggerContent ? (
+                    <ConversionResult content={swaggerContent} filename={filename} />
+                  ) : (
+                    <div className="flex items-center justify-center h-full">
+                      <div className="text-center text-muted-foreground">
+                        <p>Converted content will appear here</p>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              </ResizablePanel>
+            </ResizablePanelGroup>
+          </div>
+        )}
       </main>
       
       <Footer />

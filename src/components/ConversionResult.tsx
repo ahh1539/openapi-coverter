@@ -1,8 +1,8 @@
-
 import React, { useState } from 'react';
 import { toast } from 'sonner';
 import { Download, Copy, Check, ChevronUp, ChevronDown, FileIcon, FileJson, FileText } from 'lucide-react';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { ScrollArea } from "@/components/ui/scroll-area";
 import * as yaml from 'js-yaml';
 
 interface ConversionResultProps {
@@ -19,7 +19,6 @@ const ConversionResult = ({ content, filename }: ConversionResultProps) => {
     let downloadContent = content;
     let fileExtension = 'yaml';
     
-    // Convert to JSON if needed
     if (activeFormat === 'json') {
       try {
         const jsonObj = yaml.load(content);
@@ -39,14 +38,12 @@ const ConversionResult = ({ content, filename }: ConversionResultProps) => {
     
     const a = document.createElement('a');
     a.href = url;
-    // Create filename based on original filename
     const baseName = filename.replace(/\.(yaml|yml|json)$/, '');
     const newFilename = `${baseName}-swagger2.${fileExtension}`;
     a.download = newFilename;
     document.body.appendChild(a);
     a.click();
     
-    // Cleanup
     document.body.removeChild(a);
     URL.revokeObjectURL(url);
     
@@ -57,7 +54,6 @@ const ConversionResult = ({ content, filename }: ConversionResultProps) => {
     try {
       let copyContent = content;
       
-      // Convert to JSON if needed
       if (activeFormat === 'json') {
         const jsonObj = yaml.load(content);
         copyContent = JSON.stringify(jsonObj, null, 2);
@@ -67,7 +63,6 @@ const ConversionResult = ({ content, filename }: ConversionResultProps) => {
       setIsCopied(true);
       toast.success('Content copied to clipboard');
       
-      // Reset copy state after 2 seconds
       setTimeout(() => {
         setIsCopied(false);
       }, 2000);
@@ -81,7 +76,6 @@ const ConversionResult = ({ content, filename }: ConversionResultProps) => {
     setIsExpanded(!isExpanded);
   };
 
-  // Convert YAML to JSON for display in JSON tab
   const getJsonContent = () => {
     try {
       const jsonObj = yaml.load(content);
@@ -149,27 +143,23 @@ const ConversionResult = ({ content, filename }: ConversionResultProps) => {
             </button>
             
             <TabsContent value="yaml">
-              <div 
-                className={`bg-black/5 rounded-lg p-4 font-mono text-xs overflow-hidden ${
-                  isExpanded ? 'max-h-[500px]' : 'max-h-40'
-                } transition-all duration-300`}
-              >
-                <pre className="whitespace-pre-wrap break-words overflow-auto max-h-full">
+              <ScrollArea className={`bg-black/5 rounded-lg p-4 font-mono text-xs ${
+                isExpanded ? 'h-[500px]' : 'h-40'
+              } transition-all duration-300`}>
+                <pre className="whitespace-pre-wrap break-words">
                   {content}
                 </pre>
-              </div>
+              </ScrollArea>
             </TabsContent>
             
             <TabsContent value="json">
-              <div 
-                className={`bg-black/5 rounded-lg p-4 font-mono text-xs overflow-hidden ${
-                  isExpanded ? 'max-h-[500px]' : 'max-h-40'
-                } transition-all duration-300`}
-              >
-                <pre className="whitespace-pre-wrap break-words overflow-auto max-h-full">
+              <ScrollArea className={`bg-black/5 rounded-lg p-4 font-mono text-xs ${
+                isExpanded ? 'h-[500px]' : 'h-40'
+              } transition-all duration-300`}>
+                <pre className="whitespace-pre-wrap break-words">
                   {getJsonContent()}
                 </pre>
-              </div>
+              </ScrollArea>
             </TabsContent>
             
             {!isExpanded && (
