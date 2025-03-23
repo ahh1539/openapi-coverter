@@ -22,7 +22,7 @@ const Header = () => {
             </span>
           </h2>
           <p className="text-muted-foreground max-w-lg mx-auto">
-            A bidirectional conversion tool for API specifications. 
+            A bidirectional conversion tool for API specifications. No data is stored - everything is processed in your browser.
             <span className="flex items-center justify-center gap-2 mt-2">
               <span className="font-medium">OpenAPI 3.x</span> 
               <ArrowRightLeft className="h-4 w-4" /> 
