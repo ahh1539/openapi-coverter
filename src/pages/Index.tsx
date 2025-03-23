@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect } from 'react';
 import { toast } from 'sonner';
 import { useIsMobile } from '@/hooks/use-mobile';
@@ -29,7 +28,7 @@ const Index = () => {
   const [conversionWarnings, setConversionWarnings] = useState<string[]>([]);
   const [direction, setDirection] = useState<ConversionDirection>(ConversionDirection.OPENAPI_TO_SWAGGER);
   const [hasInput, setHasInput] = useState(false);
-  const [resetKey, setResetKey] = useState(0); // New state to force re-render of child components
+  const [resetKey, setResetKey] = useState(0);
   const isMobile = useIsMobile();
 
   const handleFileUpload = (content: string, name: string) => {
@@ -39,11 +38,8 @@ const Index = () => {
     setConversionWarnings([]);
     setHasInput(true);
     
-    // Auto-detect spec type can be used for user convenience, but don't automatically
-    // switch the direction to avoid confusion - we'll just validate based on current direction
     const specType = detectSpecType(content);
     
-    // Validate uploaded content matches the selected conversion direction
     if ((direction === ConversionDirection.OPENAPI_TO_SWAGGER && specType !== 'openapi3') ||
         (direction === ConversionDirection.SWAGGER_TO_OPENAPI && specType !== 'swagger2')) {
       const expectedType = direction === ConversionDirection.OPENAPI_TO_SWAGGER ? 'OpenAPI 3.x' : 'Swagger 2.0';
@@ -56,7 +52,6 @@ const Index = () => {
   };
   
   const handleContentSubmit = (content: string, name: string) => {
-    // The validation will already have been done in the CodeInput component
     setYamlContent(content);
     setFilename(name);
     setSwaggerContent(null);
@@ -74,7 +69,7 @@ const Index = () => {
     setSwaggerContent(null);
     setConversionWarnings([]);
     setHasInput(false);
-    setResetKey(prev => prev + 1); // Increment key to force re-render of child components
+    setResetKey(prev => prev + 1);
   };
 
   const handleConvert = async () => {
@@ -86,10 +81,8 @@ const Index = () => {
     setIsConverting(true);
     
     try {
-      // Small delay to show the animation
       await new Promise(resolve => setTimeout(resolve, 500));
       
-      // Detect spec type and validate it matches the selected direction
       const specType = detectSpecType(yamlContent);
       
       if ((direction === ConversionDirection.OPENAPI_TO_SWAGGER && specType !== 'openapi3') ||
@@ -129,7 +122,6 @@ const Index = () => {
     const newDirection = checked ? ConversionDirection.SWAGGER_TO_OPENAPI : ConversionDirection.OPENAPI_TO_SWAGGER;
     setDirection(newDirection);
     
-    // Clear the input if it exists and doesn't match the new direction
     if (yamlContent) {
       const specType = detectSpecType(yamlContent);
       if ((newDirection === ConversionDirection.OPENAPI_TO_SWAGGER && specType !== 'openapi3') ||
@@ -140,6 +132,10 @@ const Index = () => {
     
     setSwaggerContent(null);
     setConversionWarnings([]);
+  };
+
+  const handleTabChange = (value: string) => {
+    setInputMethod(value as 'upload' | 'paste');
   };
 
   return (
@@ -174,9 +170,8 @@ const Index = () => {
         </div>
         
         {isMobile ? (
-          // Mobile layout (stacked)
           <div className="w-full max-w-4xl mx-auto">
-            <Tabs defaultValue="upload" value={inputMethod} onValueChange={(v) => setInputMethod(v as 'upload' | 'paste')}>
+            <Tabs defaultValue="upload" value={inputMethod} onValueChange={handleTabChange}>
               <div className="flex justify-center mb-8">
                 <TabsList className="glass">
                   <TabsTrigger value="upload" className="flex items-center gap-2">
@@ -199,6 +194,8 @@ const Index = () => {
                   onFileUpload={handleFileUpload} 
                   conversionDirection={direction}
                   onContentChange={handleContentChange}
+                  currentContent={yamlContent}
+                  currentFilename={filename}
                 />
               </TabsContent>
               
@@ -251,13 +248,11 @@ const Index = () => {
             )}
           </div>
         ) : (
-          // Desktop layout (side by side)
           <div className="w-full max-w-[1280px] mx-auto">
             <ResizablePanelGroup direction="horizontal" className="min-h-[600px]">
-              {/* Input panel */}
               <ResizablePanel defaultSize={50} minSize={30}>
                 <div className="h-full p-4">
-                  <Tabs defaultValue="upload" value={inputMethod} onValueChange={(v) => setInputMethod(v as 'upload' | 'paste')}>
+                  <Tabs defaultValue="upload" value={inputMethod} onValueChange={handleTabChange}>
                     <div className="flex justify-center mb-8">
                       <TabsList className="glass">
                         <TabsTrigger value="upload" className="flex items-center gap-2">
@@ -280,6 +275,8 @@ const Index = () => {
                         onFileUpload={handleFileUpload} 
                         conversionDirection={direction}
                         onContentChange={handleContentChange}
+                        currentContent={yamlContent}
+                        currentFilename={filename}
                       />
                     </TabsContent>
                     
@@ -320,10 +317,8 @@ const Index = () => {
                 </div>
               </ResizablePanel>
               
-              {/* Resizable handle */}
               <ResizableHandle withHandle />
               
-              {/* Output panel */}
               <ResizablePanel defaultSize={50} minSize={30}>
                 <div className="h-full p-4 overflow-y-auto flex flex-col gap-6">
                   {conversionWarnings.length > 0 && (

@@ -1,3 +1,4 @@
+
 import React, { useState, useRef, useEffect } from 'react';
 import { toast } from 'sonner';
 import { Upload, FileIcon, X, ArrowRight } from 'lucide-react';
@@ -8,27 +9,41 @@ interface FileUploaderProps {
   onFileUpload: (content: string, filename: string) => void;
   conversionDirection?: ConversionDirection;
   onContentChange?: (hasContent: boolean) => void;
+  currentContent?: string | null;
+  currentFilename?: string | null;
 }
 
 const FileUploader = ({ 
   onFileUpload, 
   conversionDirection = ConversionDirection.OPENAPI_TO_SWAGGER,
-  onContentChange 
+  onContentChange,
+  currentContent = null,
+  currentFilename = null
 }: FileUploaderProps) => {
   const [isDragging, setIsDragging] = useState(false);
   const [file, setFile] = useState<File | null>(null);
   const [loading, setLoading] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
-
+  
+  // Initialize with current content if provided
   useEffect(() => {
-    setFile(null);
-    setIsDragging(false);
-    setLoading(false);
-    if (fileInputRef.current) {
-      fileInputRef.current.value = '';
+    if (!currentContent || !currentFilename) {
+      setFile(null);
+      setIsDragging(false);
+      setLoading(false);
+      if (fileInputRef.current) {
+        fileInputRef.current.value = '';
+      }
+      if (onContentChange) onContentChange(false);
+    } else if (currentContent && currentFilename) {
+      // Create a File object from the current content
+      const fileExtension = currentFilename.split('.').pop()?.toLowerCase() || 'yaml';
+      const blob = new Blob([currentContent], { type: fileExtension === 'json' ? 'application/json' : 'text/yaml' });
+      const newFile = new File([blob], currentFilename, { type: fileExtension === 'json' ? 'application/json' : 'text/yaml' });
+      setFile(newFile);
+      if (onContentChange) onContentChange(true);
     }
-    if (onContentChange) onContentChange(false);
-  }, []);
+  }, [currentContent, currentFilename]);
 
   const handleDragOver = (e: React.DragEvent<HTMLDivElement>) => {
     e.preventDefault();
@@ -151,6 +166,7 @@ const FileUploader = ({
       fileInputRef.current.value = '';
     }
     if (onContentChange) onContentChange(false);
+    onFileUpload('', ''); // Clear parent state
   };
 
   return (
