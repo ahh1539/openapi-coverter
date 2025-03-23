@@ -1,4 +1,3 @@
-
 import React, { useState } from 'react';
 import { toast } from 'sonner';
 import { Download, Copy, Check, ChevronUp, ChevronDown, FileIcon, FileJson, FileText } from 'lucide-react';
@@ -40,14 +39,14 @@ const ConversionResult = ({ content, filename }: ConversionResultProps) => {
     const a = document.createElement('a');
     a.href = url;
     const baseName = filename.replace(/\.(yaml|yml|json)$/, '');
-    a.download = activeFormat === 'yaml' ? `${baseName}.yaml` : `${baseName}.json`;
+    a.download = `${baseName}.${fileExtension}`;
     document.body.appendChild(a);
     a.click();
     
     document.body.removeChild(a);
     URL.revokeObjectURL(url);
     
-    toast.success('File downloaded successfully');
+    toast.success(`File downloaded as ${activeFormat.toUpperCase()}`);
   };
 
   const handleCopy = async () => {
@@ -92,7 +91,7 @@ const ConversionResult = ({ content, filename }: ConversionResultProps) => {
         <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between mb-4 gap-3">
           <div className="flex items-center">
             <FileIcon className="h-5 w-5 text-primary mr-2" />
-            <h3 className="font-medium">{filename}</h3>
+            <h3 className="font-medium">{filename.replace(/\.(yaml|yml|json)$/, activeFormat === 'yaml' ? '.yaml' : '.json')}</h3>
           </div>
           <div className="flex flex-wrap gap-2 w-full sm:w-auto">
             <button
@@ -113,7 +112,7 @@ const ConversionResult = ({ content, filename }: ConversionResultProps) => {
               aria-label="Download file"
             >
               <Download className="h-4 w-4 mr-1" />
-              <span>Download</span>
+              <span>Download {activeFormat.toUpperCase()}</span>
             </button>
           </div>
         </div>
