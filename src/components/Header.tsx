@@ -1,6 +1,6 @@
 
 import React from 'react';
-import { FileIcon } from 'lucide-react';
+import { FileIcon, ArrowRightLeft } from 'lucide-react';
 
 const Header = () => {
   return (
@@ -11,19 +11,23 @@ const Header = () => {
             <div className="mr-2 bg-primary/10 p-1 rounded-full">
               <FileIcon className="h-5 w-5 text-primary" />
             </div>
-            <h1 className="text-lg font-medium">OpenAPI Converter</h1>
+            <h1 className="text-lg font-medium">API Specification Converter</h1>
           </div>
         </div>
         
         <div className="mt-12 text-center animate-fade-in">
           <h2 className="text-3xl font-bold mb-4 leading-tight">
             <span className="bg-gradient-to-r from-primary to-primary/80 bg-clip-text text-transparent animate-shine">
-              Convert OpenAPI 3.x to Swagger 2.0
+              Convert Between OpenAPI 3.x and Swagger 2.0
             </span>
           </h2>
           <p className="text-muted-foreground max-w-lg mx-auto">
-            A simple, elegant tool to convert your OpenAPI 3.x specifications to Swagger 2.0 format with ease.
-            Upload YAML/JSON files or paste your specification directly.
+            A bidirectional conversion tool for API specifications. 
+            <span className="flex items-center justify-center gap-2 mt-2">
+              <span className="font-medium">OpenAPI 3.x</span> 
+              <ArrowRightLeft className="h-4 w-4" /> 
+              <span className="font-medium">Swagger 2.0</span>
+            </span>
           </p>
         </div>
       </div>

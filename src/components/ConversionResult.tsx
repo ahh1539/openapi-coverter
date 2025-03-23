@@ -89,15 +89,15 @@ const ConversionResult = ({ content, filename }: ConversionResultProps) => {
   return (
     <div className="w-full max-w-xl mx-auto animate-scale-in">
       <div className="glass-card p-6">
-        <div className="flex items-center justify-between mb-4">
+        <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between mb-4 gap-3">
           <div className="flex items-center">
             <FileIcon className="h-5 w-5 text-primary mr-2" />
             <h3 className="font-medium">{filename}</h3>
           </div>
-          <div className="flex space-x-2">
+          <div className="flex flex-wrap gap-2 w-full sm:w-auto">
             <button
               onClick={handleCopy}
-              className="glass-button flex items-center justify-center"
+              className="glass-button flex items-center justify-center flex-1 sm:flex-none"
               aria-label="Copy content"
             >
               {isCopied ? (
@@ -109,7 +109,7 @@ const ConversionResult = ({ content, filename }: ConversionResultProps) => {
             </button>
             <button
               onClick={handleDownload}
-              className="glass-button flex items-center justify-center bg-primary/10 hover:bg-primary/20"
+              className="glass-button flex items-center justify-center bg-primary/10 hover:bg-primary/20 flex-1 sm:flex-none"
               aria-label="Download file"
             >
               <Download className="h-4 w-4 mr-1" />
