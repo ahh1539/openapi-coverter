@@ -8,10 +8,16 @@ import ConversionWarnings from '@/components/ConversionWarnings';
 import CodeInput from '@/components/CodeInput';
 import Header from '@/components/Header';
 import Footer from '@/components/Footer';
-import { convertOpenApiToSwagger } from '@/lib/converter';
-import { ArrowRight, Upload } from 'lucide-react';
+import { 
+  convertSpecification, 
+  ConversionDirection, 
+  detectSpecType 
+} from '@/lib/converter';
+import { ArrowRight, Upload, RefreshCw, X } from 'lucide-react';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { ResizablePanelGroup, ResizablePanel, ResizableHandle } from "@/components/ui/resizable";
+import { Switch } from "@/components/ui/switch";
+import { Label } from "@/components/ui/label";
 
 const Index = () => {
   const [isConverting, setIsConverting] = useState(false);
@@ -20,6 +26,7 @@ const Index = () => {
   const [filename, setFilename] = useState<string>('');
   const [inputMethod, setInputMethod] = useState<'upload' | 'paste'>('upload');
   const [conversionWarnings, setConversionWarnings] = useState<string[]>([]);
+  const [direction, setDirection] = useState<ConversionDirection>(ConversionDirection.OPENAPI_TO_SWAGGER);
   const isMobile = useIsMobile();
 
   const handleFileUpload = (content: string, name: string) => {
@@ -27,6 +34,14 @@ const Index = () => {
     setFilename(name);
     setSwaggerContent(null);
     setConversionWarnings([]);
+    
+    // Auto-detect spec type and set direction accordingly
+    const specType = detectSpecType(content);
+    if (specType === 'openapi3') {
+      setDirection(ConversionDirection.OPENAPI_TO_SWAGGER);
+    } else if (specType === 'swagger2') {
+      setDirection(ConversionDirection.SWAGGER_TO_OPENAPI);
+    }
   };
   
   const handleContentSubmit = (content: string, name: string) => {
@@ -34,11 +49,26 @@ const Index = () => {
     setFilename(name);
     setSwaggerContent(null);
     setConversionWarnings([]);
+    
+    // Auto-detect spec type and set direction accordingly
+    const specType = detectSpecType(content);
+    if (specType === 'openapi3') {
+      setDirection(ConversionDirection.OPENAPI_TO_SWAGGER);
+    } else if (specType === 'swagger2') {
+      setDirection(ConversionDirection.SWAGGER_TO_OPENAPI);
+    }
+  };
+
+  const clearInput = () => {
+    setYamlContent(null);
+    setFilename('');
+    setSwaggerContent(null);
+    setConversionWarnings([]);
   };
 
   const handleConvert = async () => {
     if (!yamlContent) {
-      toast.error('Please upload or paste an OpenAPI file first');
+      toast.error('Please upload or paste a specification file first');
       return;
     }
     
@@ -48,11 +78,24 @@ const Index = () => {
       // Small delay to show the animation
       await new Promise(resolve => setTimeout(resolve, 500));
       
-      const conversionResult = convertOpenApiToSwagger(yamlContent);
+      // Detect spec type and show warning if it doesn't match the selected direction
+      const specType = detectSpecType(yamlContent);
+      
+      if ((direction === ConversionDirection.OPENAPI_TO_SWAGGER && specType !== 'openapi3') ||
+          (direction === ConversionDirection.SWAGGER_TO_OPENAPI && specType !== 'swagger2')) {
+        const expectedType = direction === ConversionDirection.OPENAPI_TO_SWAGGER ? 'OpenAPI 3.x' : 'Swagger 2.0';
+        toast.warning(`The input doesn't appear to be a ${expectedType} specification. Conversion may fail.`);
+      }
+      
+      const conversionResult = convertSpecification(yamlContent, direction);
       setSwaggerContent(conversionResult.content);
       setConversionWarnings(conversionResult.warnings);
       
-      toast.success('Conversion completed successfully');
+      const successMessage = direction === ConversionDirection.OPENAPI_TO_SWAGGER 
+        ? 'Successfully converted to Swagger 2.0' 
+        : 'Successfully converted to OpenAPI 3.0';
+      
+      toast.success(successMessage);
     } catch (error) {
       console.error('Conversion error:', error);
       toast.error(error instanceof Error ? error.message : 'An error occurred during conversion');
@@ -61,11 +104,51 @@ const Index = () => {
     }
   };
 
+  const getResultFilename = () => {
+    const baseName = filename.replace(/\.(yaml|yml|json)$/, '');
+    
+    if (direction === ConversionDirection.OPENAPI_TO_SWAGGER) {
+      return `${baseName}-swagger2.yaml`;
+    } else {
+      return `${baseName}-openapi3.yaml`;
+    }
+  };
+
+  const toggleDirection = (checked: boolean) => {
+    setDirection(checked ? ConversionDirection.SWAGGER_TO_OPENAPI : ConversionDirection.OPENAPI_TO_SWAGGER);
+    setSwaggerContent(null);
+    setConversionWarnings([]);
+  };
+
   return (
     <div className="min-h-screen flex flex-col">
       <Header />
       
       <main className="flex-1 w-full mx-auto px-6 pb-12">
+        <div className="w-full max-w-[1280px] mx-auto mb-8">
+          <div className="flex flex-col sm:flex-row justify-center items-center gap-4 glass-card p-4">
+            <div className="flex items-center space-x-2">
+              <Label htmlFor="conversion-direction">
+                {direction === ConversionDirection.OPENAPI_TO_SWAGGER ? 'OpenAPI 3.x → Swagger 2.0' : 'Swagger 2.0 → OpenAPI 3.x'}
+              </Label>
+              <Switch 
+                id="conversion-direction" 
+                checked={direction === ConversionDirection.SWAGGER_TO_OPENAPI}
+                onCheckedChange={toggleDirection}
+              />
+            </div>
+            
+            {yamlContent && (
+              <button
+                onClick={clearInput}
+                className="glass-button px-3 py-1 flex items-center text-sm"
+              >
+                <X className="h-4 w-4 mr-1" /> Clear Input
+              </button>
+            )}
+          </div>
+        </div>
+        
         {isMobile ? (
           // Mobile layout (stacked)
           <div className="w-full max-w-4xl mx-auto">
@@ -111,7 +194,7 @@ const Index = () => {
                     </>
                   ) : (
                     <>
-                      Convert to Swagger 2.0
+                      {direction === ConversionDirection.OPENAPI_TO_SWAGGER ? 'Convert to Swagger 2.0' : 'Convert to OpenAPI 3.0'}
                       <ArrowRight className="ml-2 h-4 w-4" />
                     </>
                   )}
@@ -125,7 +208,10 @@ const Index = () => {
             
             {swaggerContent && (
               <div className="mt-8">
-                <ConversionResult content={swaggerContent} filename={filename} />
+                <ConversionResult 
+                  content={swaggerContent} 
+                  filename={getResultFilename()} 
+                />
               </div>
             )}
           </div>
@@ -178,7 +264,7 @@ const Index = () => {
                           </>
                         ) : (
                           <>
-                            Convert to Swagger 2.0
+                            {direction === ConversionDirection.OPENAPI_TO_SWAGGER ? 'Convert to Swagger 2.0' : 'Convert to OpenAPI 3.0'}
                             <ArrowRight className="ml-2 h-4 w-4" />
                           </>
                         )}
@@ -199,7 +285,10 @@ const Index = () => {
                   )}
                   
                   {swaggerContent ? (
-                    <ConversionResult content={swaggerContent} filename={filename} />
+                    <ConversionResult 
+                      content={swaggerContent} 
+                      filename={getResultFilename()} 
+                    />
                   ) : (
                     <div className="flex items-center justify-center h-full">
                       <div className="text-center text-muted-foreground">

@@ -4,7 +4,7 @@ import { toast } from 'sonner';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Textarea } from "@/components/ui/textarea";
 import { FileText, FileJson, ArrowRight } from 'lucide-react';
-import { isValidYaml, isOpenApi3 } from '@/lib/converter';
+import { isValidYaml, isValidJson, isOpenApi3, isSwagger2 } from '@/lib/converter';
 import * as yaml from 'js-yaml';
 
 interface CodeInputProps {
@@ -18,7 +18,7 @@ const CodeInput = ({ onContentSubmit }: CodeInputProps) => {
 
   const handleProcessContent = async () => {
     if (!inputContent.trim()) {
-      toast.error('Please enter your OpenAPI specification');
+      toast.error('Please enter your API specification');
       return;
     }
     
@@ -35,7 +35,7 @@ const CodeInput = ({ onContentSubmit }: CodeInputProps) => {
           // Convert JSON to YAML for processing
           const yamlContent = yaml.dump(parsedContent);
           contentType = 'yaml';
-          onContentSubmit(yamlContent, `openapi.${contentType}`);
+          onContentSubmit(yamlContent, `api-spec.${contentType}`);
         } catch (error) {
           toast.error('Invalid JSON format');
           setIsLoading(false);
@@ -51,13 +51,13 @@ const CodeInput = ({ onContentSubmit }: CodeInputProps) => {
         
         const parsedYaml = yaml.load(inputContent) as any;
         
-        if (!isOpenApi3(parsedYaml)) {
-          toast.error('The content is not an OpenAPI 3.x specification');
+        if (!isOpenApi3(parsedYaml) && !isSwagger2(parsedYaml)) {
+          toast.error('The content is not a recognized API specification (OpenAPI 3.x or Swagger 2.0)');
           setIsLoading(false);
           return;
         }
         
-        onContentSubmit(inputContent, `openapi.${contentType}`);
+        onContentSubmit(inputContent, `api-spec.${contentType}`);
       }
     } catch (error) {
       console.error('Error processing content:', error);
@@ -70,7 +70,7 @@ const CodeInput = ({ onContentSubmit }: CodeInputProps) => {
   return (
     <div className="w-full max-w-xl mx-auto">
       <div className="glass-card p-6">
-        <h3 className="text-base font-medium mb-4">Paste your OpenAPI 3.x specification</h3>
+        <h3 className="text-base font-medium mb-4">Paste your API specification (OpenAPI 3.x or Swagger 2.0)</h3>
         
         <Tabs defaultValue="yaml" value={activeTab} onValueChange={setActiveTab}>
           <TabsList className="glass mb-4">
@@ -118,7 +118,7 @@ const CodeInput = ({ onContentSubmit }: CodeInputProps) => {
               </>
             ) : (
               <>
-                {activeTab === 'yaml' ? 'Convert YAML' : 'Convert JSON'}
+                Process {activeTab === 'yaml' ? 'YAML' : 'JSON'}
                 <ArrowRight className="ml-2 h-4 w-4" />
               </>
             )}

@@ -1,3 +1,4 @@
+
 import React, { useState } from 'react';
 import { toast } from 'sonner';
 import { Download, Copy, Check, ChevronUp, ChevronDown, FileIcon, FileJson, FileText } from 'lucide-react';
@@ -39,8 +40,7 @@ const ConversionResult = ({ content, filename }: ConversionResultProps) => {
     const a = document.createElement('a');
     a.href = url;
     const baseName = filename.replace(/\.(yaml|yml|json)$/, '');
-    const newFilename = `${baseName}-swagger2.${fileExtension}`;
-    a.download = newFilename;
+    a.download = activeFormat === 'yaml' ? `${baseName}.yaml` : `${baseName}.json`;
     document.body.appendChild(a);
     a.click();
     
@@ -92,7 +92,7 @@ const ConversionResult = ({ content, filename }: ConversionResultProps) => {
         <div className="flex items-center justify-between mb-4">
           <div className="flex items-center">
             <FileIcon className="h-5 w-5 text-primary mr-2" />
-            <h3 className="font-medium">{filename.replace(/\.(yaml|yml|json)$/, '-swagger2.yaml')}</h3>
+            <h3 className="font-medium">{filename}</h3>
           </div>
           <div className="flex space-x-2">
             <button
@@ -144,7 +144,7 @@ const ConversionResult = ({ content, filename }: ConversionResultProps) => {
             
             <TabsContent value="yaml">
               <ScrollArea className={`bg-black/5 rounded-lg p-4 font-mono text-xs ${
-                isExpanded ? 'h-[500px]' : 'h-40'
+                isExpanded ? 'h-[500px]' : 'h-[240px]'
               } transition-all duration-300`}>
                 <pre className="whitespace-pre-wrap break-words">
                   {content}
@@ -154,7 +154,7 @@ const ConversionResult = ({ content, filename }: ConversionResultProps) => {
             
             <TabsContent value="json">
               <ScrollArea className={`bg-black/5 rounded-lg p-4 font-mono text-xs ${
-                isExpanded ? 'h-[500px]' : 'h-40'
+                isExpanded ? 'h-[500px]' : 'h-[240px]'
               } transition-all duration-300`}>
                 <pre className="whitespace-pre-wrap break-words">
                   {getJsonContent()}

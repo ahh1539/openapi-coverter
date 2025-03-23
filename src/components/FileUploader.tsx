@@ -2,7 +2,7 @@
 import React, { useState, useRef } from 'react';
 import { toast } from 'sonner';
 import { Upload, FileIcon, X, ArrowRight } from 'lucide-react';
-import { isValidYaml, isValidJson, isOpenApi3 } from '@/lib/converter';
+import { isValidYaml, isValidJson, isOpenApi3, isSwagger2 } from '@/lib/converter';
 import * as yaml from 'js-yaml';
 
 interface FileUploaderProps {
@@ -53,8 +53,8 @@ const FileUploader = ({ onFileUpload }: FileUploaderProps) => {
         
         const parsedJson = JSON.parse(content);
         
-        if (!isOpenApi3(parsedJson)) {
-          toast.error('The file is not an OpenAPI 3.x specification');
+        if (!isOpenApi3(parsedJson) && !isSwagger2(parsedJson)) {
+          toast.error('The file is not a recognized API specification (OpenAPI 3.x or Swagger 2.0)');
           setFile(null);
           setLoading(false);
           return;
@@ -75,8 +75,8 @@ const FileUploader = ({ onFileUpload }: FileUploaderProps) => {
         
         const parsedYaml = yaml.load(content) as any;
         
-        if (!isOpenApi3(parsedYaml)) {
-          toast.error('The file is not an OpenAPI 3.x specification');
+        if (!isOpenApi3(parsedYaml) && !isSwagger2(parsedYaml)) {
+          toast.error('The file is not a recognized API specification (OpenAPI 3.x or Swagger 2.0)');
           setFile(null);
           setLoading(false);
           return;
@@ -172,9 +172,9 @@ const FileUploader = ({ onFileUpload }: FileUploaderProps) => {
             <div className="mb-4 p-3 rounded-full bg-primary/10">
               <Upload className="h-6 w-6 text-primary" />
             </div>
-            <p className="text-center mb-2 font-medium">Drag and drop your OpenAPI 3.x file here</p>
+            <p className="text-center mb-2 font-medium">Drag and drop your API specification file here</p>
             <p className="text-center text-sm text-muted-foreground">or click to browse</p>
-            <p className="text-center text-xs text-muted-foreground mt-2">Supports YAML and JSON formats</p>
+            <p className="text-center text-xs text-muted-foreground mt-2">Supports OpenAPI 3.x and Swagger 2.0 in YAML and JSON formats</p>
           </div>
         )}
       </div>
