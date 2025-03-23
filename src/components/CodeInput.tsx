@@ -9,9 +9,10 @@ import * as yaml from 'js-yaml';
 
 interface CodeInputProps {
   onContentSubmit: (content: string, type: string) => void;
+  currentContent?: string | null;
 }
 
-const CodeInput = ({ onContentSubmit }: CodeInputProps) => {
+const CodeInput = ({ onContentSubmit, currentContent = null }: CodeInputProps) => {
   const [inputContent, setInputContent] = useState('');
   const [activeTab, setActiveTab] = useState('yaml');
   const [isLoading, setIsLoading] = useState(false);
@@ -21,6 +22,22 @@ const CodeInput = ({ onContentSubmit }: CodeInputProps) => {
     specType: string;
     message: string;
   } | null>(null);
+
+  // Set input content when currentContent prop changes
+  useEffect(() => {
+    if (currentContent) {
+      setInputContent(currentContent);
+      
+      // Detect if it's JSON or YAML
+      try {
+        JSON.parse(currentContent);
+        setActiveTab('json');
+      } catch (e) {
+        // If not valid JSON, assume it's YAML
+        setActiveTab('yaml');
+      }
+    }
+  }, [currentContent]);
 
   // Validate input whenever content or active tab changes
   useEffect(() => {

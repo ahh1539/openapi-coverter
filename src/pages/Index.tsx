@@ -13,7 +13,7 @@ import {
   ConversionDirection, 
   detectSpecType 
 } from '@/lib/converter';
-import { ArrowRight, Upload, RefreshCw, X } from 'lucide-react';
+import { ArrowRight, Upload, X } from 'lucide-react';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { ResizablePanelGroup, ResizablePanel, ResizableHandle } from "@/components/ui/resizable";
 import { Switch } from "@/components/ui/switch";
@@ -174,7 +174,7 @@ const Index = () => {
               </TabsContent>
               
               <TabsContent value="paste">
-                <CodeInput onContentSubmit={handleContentSubmit} />
+                <CodeInput onContentSubmit={handleContentSubmit} currentContent={yamlContent} />
               </TabsContent>
             </Tabs>
             
@@ -244,7 +244,7 @@ const Index = () => {
                     </TabsContent>
                     
                     <TabsContent value="paste">
-                      <CodeInput onContentSubmit={handleContentSubmit} />
+                      <CodeInput onContentSubmit={handleContentSubmit} currentContent={yamlContent} />
                     </TabsContent>
                   </Tabs>
                   
