@@ -75,22 +75,21 @@
   }
   
   body {
-    @apply bg-gradient-to-br from-background to-secondary min-h-screen text-foreground antialiased overflow-x-hidden;
-    background-attachment: fixed;
+    @apply bg-background text-foreground antialiased overflow-x-hidden;
   }
 }
 
 @layer components {
   .glass {
-    @apply bg-glass backdrop-blur-md border border-white/30 shadow-glass dark:bg-white/5 dark:border-white/10;
+    @apply bg-white/10 backdrop-blur-md border border-white/30 shadow-glass dark:bg-white/5 dark:border-white/10;
   }
   
   .glass-card {
-    @apply bg-glass-card backdrop-blur-md border border-white/30 shadow-glass rounded-xl transition-all duration-300 hover:shadow-glass-hover dark:bg-black/10 dark:border-white/10;
+    @apply bg-white/10 backdrop-blur-md border border-white/30 shadow-glass rounded-xl transition-all duration-300 hover:shadow-glass-hover dark:bg-black/10 dark:border-white/10;
   }
   
   .glass-button {
-    @apply bg-glass backdrop-blur-md shadow-glass rounded-lg px-4 py-2 text-sm font-medium
+    @apply bg-white/10 backdrop-blur-md shadow-glass rounded-lg px-4 py-2 text-sm font-medium
     transition-all duration-200 hover:shadow-glass-hover hover:bg-primary/20 active:shadow-glass-pressed
     dark:bg-white/5 dark:border-white/10 dark:hover:bg-primary/20;
   }
