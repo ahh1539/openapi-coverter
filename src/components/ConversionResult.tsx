@@ -1,8 +1,11 @@
+
 import React, { useState } from 'react';
 import { toast } from 'sonner';
-import { Download, Copy, Check, ChevronUp, ChevronDown, FileIcon, FileJson, FileText } from 'lucide-react';
+import { Download, Copy, Check, ChevronUp, ChevronDown, FileIcon, FileJson, FileText, Eye } from 'lucide-react';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { ScrollArea } from "@/components/ui/scroll-area";
+import ApiVisualizer from './ApiVisualizer';
+import { parseApiSpec } from '@/lib/apiVisualizer';
 import * as yaml from 'js-yaml';
 
 interface ConversionResultProps {
@@ -14,6 +17,7 @@ const ConversionResult = ({ content, filename }: ConversionResultProps) => {
   const [isCopied, setIsCopied] = useState(false);
   const [isExpanded, setIsExpanded] = useState(false);
   const [activeFormat, setActiveFormat] = useState('yaml');
+  const [isVisualizerOpen, setIsVisualizerOpen] = useState(false);
 
   const handleDownload = () => {
     let downloadContent = content;
@@ -85,6 +89,10 @@ const ConversionResult = ({ content, filename }: ConversionResultProps) => {
     }
   };
 
+  const handleVisualize = () => {
+    setIsVisualizerOpen(true);
+  };
+
   return (
     <div className="w-full max-w-xl mx-auto animate-scale-in">
       <div className="glass-card p-6">
@@ -94,6 +102,14 @@ const ConversionResult = ({ content, filename }: ConversionResultProps) => {
             <h3 className="font-medium">{filename.replace(/\.(yaml|yml|json)$/, activeFormat === 'yaml' ? '.yaml' : '.json')}</h3>
           </div>
           <div className="flex flex-wrap gap-2 w-full sm:w-auto">
+            <button
+              onClick={handleVisualize}
+              className="glass-button flex items-center justify-center flex-1 sm:flex-none"
+              aria-label="Visualize API"
+            >
+              <Eye className="h-4 w-4 mr-1" />
+              <span>Visualize</span>
+            </button>
             <button
               onClick={handleCopy}
               className="glass-button flex items-center justify-center flex-1 sm:flex-none"
@@ -174,6 +190,12 @@ const ConversionResult = ({ content, filename }: ConversionResultProps) => {
           </div>
         </Tabs>
       </div>
+      
+      <ApiVisualizer 
+        data={parseApiSpec(content)}
+        isOpen={isVisualizerOpen}
+        onClose={() => setIsVisualizerOpen(false)}
+      />
     </div>
   );
 };
