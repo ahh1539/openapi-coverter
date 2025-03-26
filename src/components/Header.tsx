@@ -12,7 +12,7 @@ const Header = () => {
             <div className="mr-2 bg-primary/10 p-1 rounded-full">
               <FileIcon className="h-5 w-5 text-primary" />
             </div>
-            <h1 className="text-lg font-medium">API Specification Converter</h1>
+            <h1 className="text-lg font-medium">Free OpenAPI & Swagger Converter</h1>
           </div>
           
           <ThemeToggle />
@@ -25,7 +25,7 @@ const Header = () => {
             </span>
           </h2>
           <p className="text-muted-foreground max-w-lg mx-auto">
-            A bidirectional conversion tool for API specifications. No data is stored - everything is processed in your browser.
+            A bidirectional conversion tool for API specifications. No data is stored, everything is processed in your browser.
             <span className="flex items-center justify-center gap-2 mt-2">
               <span className="font-medium">OpenAPI 3.x</span> 
               <ArrowRightLeft className="h-4 w-4" /> 
