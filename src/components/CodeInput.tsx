@@ -295,28 +295,6 @@ const CodeInput = ({
             )}
           </div>
         )}
-        
-        <div className="mt-4">
-          <button
-            onClick={handleProcessContent}
-            disabled={isLoading || !inputContent.trim() || (validationStatus && (!validationStatus.formatValid || !validationStatus.specTypeValid))}
-            className={`glass-button w-full px-6 py-3 font-medium flex items-center justify-center ${
-              isLoading || !inputContent.trim() || (validationStatus && (!validationStatus.formatValid || !validationStatus.specTypeValid)) ? 'opacity-70 cursor-not-allowed' : ''
-            }`}
-          >
-            {isLoading ? (
-              <>
-                <div className="animate-spin h-4 w-4 mr-2 border-2 border-current border-t-transparent rounded-full"></div>
-                Processing...
-              </>
-            ) : (
-              <>
-                Process {activeTab === 'yaml' ? 'YAML' : 'JSON'}
-                <ArrowRight className="ml-2 h-4 w-4" />
-              </>
-            )}
-          </button>
-        </div>
       </div>
     </div>
   );
