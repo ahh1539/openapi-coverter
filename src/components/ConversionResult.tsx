@@ -1,5 +1,4 @@
-
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { toast } from 'sonner';
 import { Download, Copy, Check, ChevronUp, ChevronDown, FileIcon, FileJson, FileText, Eye } from 'lucide-react';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -18,6 +17,9 @@ const ConversionResult = ({ content, filename }: ConversionResultProps) => {
   const [isExpanded, setIsExpanded] = useState(false);
   const [activeFormat, setActiveFormat] = useState('yaml');
   const [isVisualizerOpen, setIsVisualizerOpen] = useState(false);
+
+  console.log('ConversionResult received content:', content ? content.substring(0, 100) + '...' : 'null');
+  console.log('Filename:', filename);
 
   const handleDownload = () => {
     let downloadContent = content;
@@ -92,6 +94,10 @@ const ConversionResult = ({ content, filename }: ConversionResultProps) => {
   const handleVisualize = () => {
     setIsVisualizerOpen(true);
   };
+
+  React.useEffect(() => {
+    console.log('Content changed in ConversionResult');
+  }, [content]);
 
   return (
     <div className="w-full max-w-xl mx-auto animate-scale-in">

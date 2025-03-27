@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect } from 'react';
 import { toast } from 'sonner';
 import { useIsMobile } from '@/hooks/use-mobile';
@@ -145,7 +144,7 @@ const Index = () => {
 
   const renderConvertButton = () => {
     return (
-      <div className={`flex justify-center ${hasInput ? 'animate-fade-in' : 'hidden'}`}>
+      <div className={`flex justify-center mt-8 ${hasInput ? 'animate-fade-in' : 'hidden'}`}>
         <button
           onClick={handleConvert}
           disabled={isConverting}
