@@ -1,3 +1,4 @@
+
 import yaml
 from converter import convert_specification, ConversionDirection
 
@@ -17,6 +18,24 @@ try:
     print(result_swagger['content'])
     print("-" * 20)
 
+    # Load the converted spec for analysis
+    converted_spec = yaml.safe_load(result_swagger['content'])
+    
+    # Check for global security
+    if 'security' in converted_spec:
+        print("✅ Global security preserved in converted Swagger spec")
+    else:
+        print("❌ Global security missing in converted Swagger spec")
+    
+    # Check for operation-level security
+    if 'paths' in converted_spec:
+        for path, path_item in converted_spec['paths'].items():
+            for method, operation in path_item.items():
+                if 'security' in operation:
+                    print(f"✅ Operation security preserved in {method.upper()} {path}")
+                else:
+                    print(f"❌ Security missing in {method.upper()} {path}")
+    
     if result_swagger['warnings']:
         print("Warnings:")
         for warning in result_swagger['warnings']:
@@ -45,6 +64,26 @@ try:
     print(result_openapi['content'])
     print("-" * 20)
 
+    # Load the converted spec for analysis
+    converted_spec = yaml.safe_load(result_openapi['content'])
+    
+    # Check for global security
+    if 'security' in converted_spec:
+        print("✅ Global security preserved in converted OpenAPI spec")
+    else:
+        print("❌ Global security missing in converted OpenAPI spec")
+    
+    # Check for operation-level security
+    if 'paths' in converted_spec:
+        for path, path_item in converted_spec['paths'].items():
+            for method, operation in path_item.items():
+                if method == 'parameters':
+                    continue
+                if 'security' in operation:
+                    print(f"✅ Operation security preserved in {method.upper()} {path}")
+                else:
+                    print(f"❌ Security missing in {method.upper()} {path}")
+    
     if result_openapi['warnings']:
         print("Warnings:")
         for warning in result_openapi['warnings']:

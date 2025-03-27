@@ -1,3 +1,4 @@
+
 openapi: 3.0.0
 info:
   title: Simple Pet Store API
@@ -24,6 +25,8 @@ components:
       type: apiKey
       name: X-API-KEY
       in: header
+security:
+  - apiKey: []  # Global security requirement
 paths:
   /pets:
     get:
@@ -31,6 +34,8 @@ paths:
       operationId: listPets
       tags:
         - pets
+      security:
+        - apiKey: []  # Operation-specific security requirement
       parameters:
         - name: limit
           in: query
@@ -53,6 +58,8 @@ paths:
       operationId: createPet
       tags:
         - pets
+      security:
+        - apiKey: []  # Operation-specific security requirement
       requestBody:
         required: true
         content:
@@ -68,6 +75,8 @@ paths:
       operationId: showPetById
       tags:
         - pets
+      security:
+        - apiKey: []  # Operation-specific security requirement
       parameters:
         - name: petId
           in: path

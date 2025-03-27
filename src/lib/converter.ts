@@ -1,4 +1,3 @@
-
 import * as yaml from 'js-yaml';
 
 // Define TypeScript interfaces for OpenAPI objects
@@ -7,6 +6,7 @@ interface OpenAPIOperation {
   description?: string;
   operationId?: string;
   tags?: string[];
+  security?: any[];
   requestBody?: {
     required?: boolean;
     description?: string;
@@ -38,6 +38,7 @@ interface OpenAPISpec {
   openapi: string;
   info: any;
   servers?: { url: string }[];
+  security?: any[];
   paths?: Record<string, OpenAPIPathItem>;
   components?: {
     schemas?: Record<string, any>;
@@ -55,6 +56,7 @@ interface SwaggerSpec {
   schemes?: string[];
   consumes?: string[];
   produces?: string[];
+  security?: any[];
   paths?: Record<string, any>;
   definitions?: Record<string, any>;
   securityDefinitions?: Record<string, any>;
@@ -66,6 +68,7 @@ interface SwaggerOperation {
   description?: string;
   operationId?: string;
   tags?: string[];
+  security?: any[];
   parameters?: any[];
   responses?: Record<string, SwaggerResponse>;
   consumes?: string[];
@@ -234,6 +237,11 @@ export function convertOpenApiToSwagger(yamlContent: string): { content: string;
       securityDefinitions: {}
     };
     
+    // Add global security if available
+    if (openApiSpec.security) {
+      swaggerSpec.security = openApiSpec.security;
+    }
+    
     // Extract host and basePath from servers if available
     if (openApiSpec.servers && openApiSpec.servers.length > 0) {
       const serverUrl = new URL(openApiSpec.servers[0].url);
@@ -307,6 +315,11 @@ export function convertSwaggerToOpenApi(yamlContent: string): { content: string;
       }
     };
     
+    // Add global security if available
+    if (swaggerSpec.security) {
+      openApiSpec.security = swaggerSpec.security;
+    }
+    
     // Convert host, basePath, and schemes to servers
     const serverUrl = buildServerUrl(swaggerSpec);
     openApiSpec.servers = [{ url: serverUrl }];
@@ -373,6 +386,11 @@ function convertSwaggerOperationToOpenApi(operation: SwaggerOperation, globalCon
     tags: operation.tags,
     responses: {}
   };
+  
+  // Preserve security requirements if present
+  if (operation.security) {
+    openApiOperation.security = operation.security;
+  }
   
   // Handle parameters
   if (operation.parameters) {
@@ -569,6 +587,11 @@ function convertOperation(operation: OpenAPIOperation): any {
     tags: operation.tags,
     responses: {},
   };
+  
+  // Preserve security requirements if present
+  if (operation.security) {
+    result.security = operation.security;
+  }
   
   // Convert parameters
   if (operation.parameters) {

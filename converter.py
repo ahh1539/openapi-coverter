@@ -1,3 +1,4 @@
+
 import yaml
 from enum import Enum
 from urllib.parse import urlparse
@@ -12,6 +13,7 @@ class ConversionDirection(str, Enum):
 
 # Detect OpenAPI 3.x features that aren't fully supported in Swagger 2.0
 def detect_unsupported_features(openapi_spec: Dict[str, Any]) -> List[str]:
+    # ... keep existing code (OpenAPI 3.x feature detection logic)
     warnings = []
     
     # Check for callbacks (not supported in Swagger 2.0)
@@ -78,6 +80,7 @@ def detect_unsupported_features(openapi_spec: Dict[str, Any]) -> List[str]:
 
 # Detect Swagger 2.0 features that aren't fully supported in OpenAPI 3.x
 def detect_swagger_unsupported_features(swagger_spec: Dict[str, Any]) -> List[str]:
+    # ... keep existing code (Swagger feature detection logic)
     warnings = []
     
     # Check for multiple produces/consumes at the global level
@@ -110,6 +113,7 @@ def detect_swagger_unsupported_features(swagger_spec: Dict[str, Any]) -> List[st
 
 # Convert OpenAPI 3.x to Swagger 2.0
 def convert_openapi_to_swagger(yaml_content: str) -> Dict[str, Any]:
+    # ... keep existing code (OpenAPI to Swagger conversion setup)
     try:
         # Parse the YAML content to Python dictionary
         openapi_spec = yaml.safe_load(yaml_content)
@@ -153,6 +157,10 @@ def convert_openapi_to_swagger(yaml_content: str) -> Dict[str, Any]:
             for key, scheme in openapi_spec['components']['securitySchemes'].items():
                 swagger_spec['securityDefinitions'][key] = convert_security_scheme(scheme)
         
+        # Convert global security if available
+        if openapi_spec.get('security'):
+            swagger_spec['security'] = openapi_spec['security']
+        
         # Convert paths
         if openapi_spec.get('paths'):
             for path, path_item in openapi_spec['paths'].items():
@@ -177,6 +185,7 @@ def convert_openapi_to_swagger(yaml_content: str) -> Dict[str, Any]:
 
 # Build server URL from Swagger spec
 def build_server_url(swagger_spec: Dict[str, Any]) -> str:
+    # ... keep existing code (server URL building)
     scheme = swagger_spec.get('schemes', ['https'])[0] if swagger_spec.get('schemes') else 'https'
     host = swagger_spec.get('host', 'example.com')
     base_path = swagger_spec.get('basePath', '/')
@@ -186,6 +195,7 @@ def build_server_url(swagger_spec: Dict[str, Any]) -> str:
 
 # Convert Swagger 2.0 to OpenAPI 3.x
 def convert_swagger_to_openapi(yaml_content: str) -> Dict[str, Any]:
+    # ... keep existing code (Swagger to OpenAPI conversion setup)
     try:
         # Parse the YAML content to Python dictionary
         swagger_spec = yaml.safe_load(yaml_content)
@@ -221,6 +231,10 @@ def convert_swagger_to_openapi(yaml_content: str) -> Dict[str, Any]:
             for key, definition in swagger_spec['securityDefinitions'].items():
                 openapi_spec['components']['securitySchemes'][key] = convert_security_definition_to_scheme(definition)
         
+        # Convert global security if available
+        if swagger_spec.get('security'):
+            openapi_spec['security'] = swagger_spec['security']
+        
         # Convert paths
         if swagger_spec.get('paths'):
             for path, path_item in swagger_spec['paths'].items():
@@ -251,6 +265,7 @@ def convert_swagger_to_openapi(yaml_content: str) -> Dict[str, Any]:
 def convert_swagger_operation_to_openapi(operation: Dict[str, Any], 
                                          global_consumes: List[str], 
                                          global_produces: List[str]) -> Dict[str, Any]:
+    # ... keep existing code (Swagger operation conversion)
     openapi_operation = {
         'summary': operation.get('summary'),
         'description': operation.get('description'),
@@ -261,6 +276,10 @@ def convert_swagger_operation_to_openapi(operation: Dict[str, Any],
     
     # Clean up None values
     openapi_operation = {k: v for k, v in openapi_operation.items() if v is not None}
+    
+    # Handle security requirements
+    if operation.get('security'):
+        openapi_operation['security'] = operation['security']
     
     # Handle parameters
     if operation.get('parameters'):
@@ -361,6 +380,7 @@ def convert_swagger_operation_to_openapi(operation: Dict[str, Any],
 
 # Convert OpenAPI security scheme to Swagger security definition
 def convert_security_scheme(scheme: Dict[str, Any]) -> Dict[str, Any]:
+    # ... keep existing code (security scheme conversion)
     result = {
         'type': scheme.get('type'),
     }
@@ -392,6 +412,7 @@ def convert_security_scheme(scheme: Dict[str, Any]) -> Dict[str, Any]:
 
 # Convert Swagger security definition to OpenAPI security scheme
 def convert_security_definition_to_scheme(definition: Dict[str, Any]) -> Dict[str, Any]:
+    # ... keep existing code (security definition conversion)
     result = {
         'type': definition.get('type'),
         'description': definition.get('description')
@@ -448,6 +469,10 @@ def convert_operation(operation: Dict[str, Any]) -> Dict[str, Any]:
     
     # Clean up None values
     result = {k: v for k, v in result.items() if v is not None}
+    
+    # Handle security requirements (transfer them to the Swagger operation)
+    if operation.get('security'):
+        result['security'] = operation['security']
     
     # Convert parameters
     if operation.get('parameters'):
