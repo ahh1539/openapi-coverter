@@ -53,25 +53,6 @@ const CodeInput = ({
     }
   }, [currentContent]);
 
-  // Notify parent about content changes and validation status
-  useEffect(() => {
-    if (!inputContent.trim()) {
-      if (onContentChange) onContentChange(false);
-      return;
-    }
-    
-    // Check if content is both format valid and spec type valid before reporting as ready
-    if (validationStatus && validationStatus.formatValid && validationStatus.specTypeValid) {
-      if (onContentChange) onContentChange(true);
-      
-      // Automatically submit valid content to parent
-      const contentType = activeTab === 'yaml' ? 'yaml' : 'json';
-      onContentSubmit(inputContent, `api-spec.${contentType}`);
-    } else {
-      if (onContentChange) onContentChange(false);
-    }
-  }, [validationStatus, onContentChange, inputContent, activeTab, onContentSubmit]);
-
   // Validate input whenever content, active tab, or conversion direction changes
   useEffect(() => {
     if (!inputContent.trim()) {
@@ -81,6 +62,27 @@ const CodeInput = ({
     
     validateInput(inputContent, activeTab, conversionDirection);
   }, [inputContent, activeTab, conversionDirection]);
+  
+  // Notify parent about content changes when validation status changes
+  useEffect(() => {
+    if (!inputContent.trim()) {
+      if (onContentChange) onContentChange(false);
+      return;
+    }
+    
+    console.log("CodeInput validation status:", validationStatus);
+    // Check if content is both format valid and spec type valid
+    if (validationStatus && validationStatus.formatValid && validationStatus.specTypeValid) {
+      if (onContentChange) onContentChange(true);
+      
+      // Automatically submit valid content to parent
+      console.log("CodeInput auto-submitting validated content");
+      const contentType = activeTab === 'yaml' ? 'yaml' : 'json';
+      onContentSubmit(inputContent, `api-spec.${contentType}`);
+    } else {
+      if (onContentChange) onContentChange(false);
+    }
+  }, [validationStatus, inputContent, activeTab]);
   
   const validateInput = (content: string, format: string, direction: ConversionDirection) => {
     // Check format validation (YAML or JSON)

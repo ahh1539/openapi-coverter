@@ -58,7 +58,7 @@ const Index = () => {
   };
   
   const handleContentSubmit = (content: string, name: string) => {
-    console.log('Content submitted:', name);
+    console.log('Content submitted:', name, 'length:', content ? content.length : 0);
     setYamlContent(content);
     setFilename(name);
     setSwaggerContent(null);
@@ -86,6 +86,7 @@ const Index = () => {
     }
     
     setIsConverting(true);
+    setSwaggerContent(null); // Reset swagger content before conversion
     
     try {
       await new Promise(resolve => setTimeout(resolve, 500));
@@ -99,10 +100,12 @@ const Index = () => {
       }
       
       const conversionResult = convertSpecification(yamlContent, direction);
-      console.log('Conversion successful. Setting swaggerContent:', 
-        conversionResult.content ? conversionResult.content.substring(0, 50) + '...' : 'null');
+      console.log('Conversion successful. Result content length:', 
+        conversionResult.content ? conversionResult.content.length : 0,
+        'Input method:', inputMethod);
       
-      setSwaggerContent(conversionResult.content);
+      // Important: Make sure we set the content as a string
+      setSwaggerContent(conversionResult.content || '');
       setConversionWarnings(conversionResult.warnings);
       
       const successMessage = direction === ConversionDirection.OPENAPI_TO_SWAGGER 
@@ -175,7 +178,7 @@ const Index = () => {
   };
 
   useEffect(() => {
-    console.log('swaggerContent updated:', swaggerContent ? 'content present' : 'no content');
+    console.log('swaggerContent updated:', swaggerContent ? `content present, length: ${swaggerContent.length}` : 'no content');
   }, [swaggerContent]);
 
   return (
@@ -322,7 +325,7 @@ const Index = () => {
                   )}
                   
                   {swaggerContent ? (
-                    <div className="animate-fade-in">
+                    <div className="animate-fade-in" key={`result-${swaggerContent.length}`}>
                       <ConversionResult 
                         content={swaggerContent} 
                         filename={getResultFilename()} 

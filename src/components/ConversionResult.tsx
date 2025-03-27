@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect } from 'react';
 import { toast } from 'sonner';
 import { Download, Copy, Check, ChevronUp, ChevronDown, FileIcon, FileJson, FileText, Eye } from 'lucide-react';
@@ -20,18 +19,23 @@ const ConversionResult = ({ content, filename }: ConversionResultProps) => {
   const [isVisualizerOpen, setIsVisualizerOpen] = useState(false);
   const [processedContent, setProcessedContent] = useState<string>('');
 
-  console.log('ConversionResult received content:', content ? content.substring(0, 100) + '...' : 'null');
-  console.log('Filename:', filename);
+  console.log('ConversionResult rendered with content length:', content ? content.length : 0);
+  console.log('ConversionResult filename:', filename);
 
   useEffect(() => {
     if (content) {
-      console.log('Setting processed content', content.substring(0, 50) + '...');
+      console.log('Setting processed content, length:', content.length);
       setProcessedContent(content);
     } else {
-      console.log('No content to process');
+      console.log('No content to process in ConversionResult');
       setProcessedContent('');
     }
   }, [content]);
+
+  if (!content || content.trim() === '') {
+    console.warn('ConversionResult rendered with empty content, returning null');
+    return null;
+  }
 
   const handleDownload = () => {
     let downloadContent = processedContent;
@@ -110,11 +114,6 @@ const ConversionResult = ({ content, filename }: ConversionResultProps) => {
   const handleVisualize = () => {
     setIsVisualizerOpen(true);
   };
-
-  if (!processedContent) {
-    console.warn('ConversionResult rendered with empty content');
-    return null;
-  }
 
   return (
     <div className="w-full max-w-xl mx-auto animate-scale-in">
