@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect } from 'react';
 import { toast } from 'sonner';
 import { useIsMobile } from '@/hooks/use-mobile';
@@ -32,6 +33,7 @@ const Index = () => {
   const isMobile = useIsMobile();
 
   const handleFileUpload = (content: string, name: string) => {
+    console.log('File uploaded:', name);
     setYamlContent(content);
     setFilename(name);
     setSwaggerContent(null);
@@ -56,13 +58,14 @@ const Index = () => {
   };
   
   const handleContentSubmit = (content: string, name: string) => {
+    console.log('Content submitted:', name);
     setYamlContent(content);
     setFilename(name);
     setSwaggerContent(null);
     setConversionWarnings([]);
     setHasInput(!!content);
   };
-  
+
   const handleContentChange = (hasContent: boolean) => {
     setHasInput(hasContent);
   };

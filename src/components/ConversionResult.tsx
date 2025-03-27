@@ -119,7 +119,7 @@ const ConversionResult = ({ content, filename }: ConversionResultProps) => {
   return (
     <div className="w-full max-w-xl mx-auto animate-scale-in">
       <div className="glass-card p-6">
-        <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between mb-4 gap-3">
+        <div className="flex flex-col sm:flex-row items-center justify-between mb-4 gap-3">
           <div className="flex items-center">
             <FileIcon className="h-5 w-5 text-primary mr-2" />
             <h3 className="font-medium">{filename.replace(/\.(yaml|yml|json)$/, activeFormat === 'yaml' ? '.yaml' : '.json')}</h3>
