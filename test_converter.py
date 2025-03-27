@@ -21,6 +21,12 @@ try:
     # Load the converted spec for analysis
     converted_spec = yaml.safe_load(result_swagger['content'])
     
+    # Verify the correct version
+    if converted_spec.get('swagger') == '2.0':
+        print("✅ Output uses correct Swagger 2.0 version")
+    else:
+        print(f"❌ Output uses incorrect version: {converted_spec.get('swagger')}")
+    
     # Check for global security
     if 'security' in converted_spec:
         print("✅ Global security preserved in converted Swagger spec")
@@ -31,6 +37,8 @@ try:
     if 'paths' in converted_spec:
         for path, path_item in converted_spec['paths'].items():
             for method, operation in path_item.items():
+                if method == 'parameters':
+                    continue
                 if 'security' in operation:
                     print(f"✅ Operation security preserved in {method.upper()} {path}")
                 else:
@@ -90,17 +98,59 @@ try:
             for path_item in obj['paths'].values():
                 for method, operation in path_item.items():
                     if method == 'parameters':
-                        continue
-                    if 'parameters' in operation:
-                        for param in operation['parameters']:
+                        # Check path-level parameters
+                        for param in operation:
                             if param.get('in') != 'body' and not param.get('type') and not param.get('schema'):
                                 all_params_have_types = False
-                                print(f"❌ Parameter without type found: {param.get('name')}")
+                                print(f"❌ Path parameter without type found: {param.get('name')}")
+                    elif method != '$ref':
+                        # Check operation-level parameters
+                        if 'parameters' in operation:
+                            for param in operation['parameters']:
+                                if param.get('in') != 'body' and not param.get('type') and not param.get('schema'):
+                                    all_params_have_types = False
+                                    print(f"❌ Parameter without type found in {method.upper()}: {param.get('name')}")
     
     check_parameter_types(converted_spec)
     
     if all_params_have_types:
         print("✅ All non-body parameters have types")
+    
+    # Check for schemas in definitions
+    schemas_in_definitions = True
+    if 'components' in converted_spec:
+        if 'schemas' in converted_spec['components']:
+            schemas_in_definitions = False
+            print("❌ Schemas found in components/schemas instead of definitions")
+    
+    if schemas_in_definitions:
+        print("✅ Schemas correctly placed in definitions")
+    
+    # Check for x-nullable usage
+    x_nullable_found = False
+    
+    def check_x_nullable(obj):
+        nonlocal x_nullable_found
+        if isinstance(obj, dict):
+            if 'x-nullable' in obj and obj['x-nullable'] is True:
+                x_nullable_found = True
+            for value in obj.values():
+                if isinstance(value, (dict, list)):
+                    check_x_nullable(value)
+        elif isinstance(obj, list):
+            for item in obj:
+                if isinstance(item, (dict, list)):
+                    check_x_nullable(item)
+    
+    # Only check for x-nullable if we have nullable fields in the test spec
+    x_nullable_test = True
+    
+    if x_nullable_test:
+        check_x_nullable(converted_spec)
+        if x_nullable_found:
+            print("✅ x-nullable extension used for nullable fields")
+        else:
+            print("ℹ️ No x-nullable usage found (this may be OK if there are no nullable fields)")
     
     if result_swagger['warnings']:
         print("Warnings:")
@@ -133,6 +183,12 @@ try:
     # Load the converted spec for analysis
     converted_spec = yaml.safe_load(result_openapi['content'])
     
+    # Verify the correct version
+    if converted_spec.get('openapi', '').startswith('3.'):
+        print("✅ Output uses correct OpenAPI 3.x version")
+    else:
+        print(f"❌ Output uses incorrect version: {converted_spec.get('openapi')}")
+    
     # Check for global security
     if 'security' in converted_spec:
         print("✅ Global security preserved in converted OpenAPI spec")
@@ -149,6 +205,39 @@ try:
                     print(f"✅ Operation security preserved in {method.upper()} {path}")
                 else:
                     print(f"❌ Security missing in {method.upper()} {path}")
+    
+    # Check for proper reference paths
+    ref_paths_correct = True
+    
+    def check_refs(obj):
+        nonlocal ref_paths_correct
+        if isinstance(obj, dict):
+            for key, value in obj.items():
+                if key == '$ref' and isinstance(value, str):
+                    if not value.startswith('#/components/schemas/'):
+                        ref_paths_correct = False
+                        print(f"❌ Invalid reference path found: {value}")
+                elif isinstance(value, (dict, list)):
+                    check_refs(value)
+        elif isinstance(obj, list):
+            for item in obj:
+                if isinstance(item, (dict, list)):
+                    check_refs(item)
+    
+    check_refs(converted_spec)
+    
+    if ref_paths_correct:
+        print("✅ All reference paths use #/components/schemas/ format")
+    
+    # Check for schemas in components
+    schemas_in_components = False
+    if 'components' in converted_spec and 'schemas' in converted_spec['components']:
+        schemas_in_components = True
+    
+    if schemas_in_components:
+        print("✅ Schemas correctly placed in components/schemas")
+    else:
+        print("❌ Schemas not found in components/schemas")
     
     if result_openapi['warnings']:
         print("Warnings:")

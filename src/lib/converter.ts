@@ -109,18 +109,110 @@ function fixSwagger2References(obj: any): any {
       else if (key === 'anyOf' || key === 'oneOf') {
         // Pick the first non-null schema or just the first one
         const schemas = value as any[];
-        const nonNullSchema = schemas.find(schema => 
-          !schema.type || schema.type !== 'null'
-        ) || schemas[0];
         
-        // Apply the non-null schema properties directly to the parent
-        Object.entries(nonNullSchema).forEach(([k, v]) => {
-          result[k] = fixSwagger2References(v);
-        });
+        // Check if this is a nullable type case
+        const nonNullSchemas = schemas.filter(schema => !schema.type || schema.type !== 'null');
+        const hasNullType = schemas.some(schema => schema.type === 'null');
         
-        // Add x-nullable if null was an option
-        if (schemas.some(schema => schema.type === 'null')) {
+        if (nonNullSchemas.length === 1 && hasNullType) {
+          // Simple nullable case: prefer first non-null schema
+          const nonNullSchema = nonNullSchemas[0];
+          
+          // Apply the non-null schema properties directly to the parent
+          Object.entries(nonNullSchema).forEach(([k, v]) => {
+            result[k] = fixSwagger2References(v);
+          });
+          
+          // Add x-nullable to indicate nullable property
           result['x-nullable'] = true;
+        } 
+        else if (nonNullSchemas.length > 0) {
+          // Multiple non-null schemas - pick the most specific or first one
+          // Try to find one with a type that's not 'object' as it's more specific
+          const mostSpecificSchema = nonNullSchemas.find(schema => 
+            schema.type && schema.type !== 'object'
+          ) || nonNullSchemas[0];
+          
+          // Apply the chosen schema properties to the parent
+          Object.entries(mostSpecificSchema).forEach(([k, v]) => {
+            result[k] = fixSwagger2References(v);
+          });
+          
+          // Add description about this being a simplified representation if not already present
+          if (!result.description) {
+            result.description = 'This is a simplified representation of a more complex type.';
+          } else if (!result.description.includes('simplified representation')) {
+            result.description += ' (This is a simplified representation of a more complex type.)';
+          }
+          
+          // Add x-nullable if null was an option
+          if (hasNullType) {
+            result['x-nullable'] = true;
+          }
+        } 
+        else {
+          // Fallback to generic object type if no clear schema found
+          result.type = 'object';
+          result.description = result.description || 'Complex type that requires custom validation.';
+        }
+      }
+      // Handle allOf (partially supported in Swagger 2.0)
+      else if (key === 'allOf') {
+        // For allOf, we need to attempt to merge schemas
+        // This is a simplified approach; full merging is complex
+        const mergedSchema: any = {};
+        
+        // Try to merge properties of all schemas
+        for (const schema of (value as any[])) {
+          if (schema.$ref) {
+            // If it has a $ref, we'll keep it in the allOf
+            if (!result.allOf) result.allOf = [];
+            result.allOf.push(fixSwagger2References(schema));
+          } else {
+            // For non-$ref schemas, try to merge them
+            Object.entries(schema).forEach(([propKey, propValue]) => {
+              if (propKey === 'properties' && typeof propValue === 'object') {
+                mergedSchema.properties = mergedSchema.properties || {};
+                Object.assign(mergedSchema.properties, propValue);
+              } else if (propKey === 'required' && Array.isArray(propValue)) {
+                mergedSchema.required = mergedSchema.required || [];
+                mergedSchema.required = [...mergedSchema.required, ...propValue];
+              } else {
+                // For other keys, override with the latest value
+                mergedSchema[propKey] = propValue;
+              }
+            });
+          }
+        }
+        
+        // Apply merged properties if we have them
+        if (Object.keys(mergedSchema).length > 0) {
+          Object.entries(mergedSchema).forEach(([k, v]) => {
+            if (k !== 'allOf') { // Avoid circular reference
+              result[k] = fixSwagger2References(v);
+            }
+          });
+        }
+        
+        // If we still have $ref schemas in allOf, keep them
+        if (result.allOf && result.allOf.length > 0) {
+          // Keep it as is
+        } else {
+          // We merged everything, so we don't need allOf
+          delete result.allOf;
+        }
+      }
+      // Handle "not" schema (not supported in Swagger 2.0)
+      else if (key === 'not') {
+        // Cannot represent "not" in Swagger 2.0, so add description
+        result.description = result.description || '';
+        if (!result.description.includes('with exclusions')) {
+          result.description += ' (Complex type with exclusions that cannot be fully represented in Swagger 2.0.)';
+        }
+        
+        // Default to object type if no type specified
+        if (!result.type) {
+          result.type = 'object';
         }
       }
       // For all other properties, recurse
@@ -141,11 +233,45 @@ function ensureParameterTypes(parameters: any[]): any[] {
   if (!parameters) return parameters;
   
   return parameters.map(param => {
-    if (param.in !== 'body' && !param.schema && !param.type) {
-      // Default to string if no type is specified
-      param.type = 'string';
+    const newParam = { ...param };
+    
+    if (param.in !== 'body') {
+      if (!param.type && !param.schema) {
+        // Default to string if no type is specified
+        newParam.type = 'string';
+      }
+      
+      // If we have a schema but not a type, extract type from schema
+      if (param.schema && !param.type) {
+        if (param.schema.$ref) {
+          // If schema is a reference, keep it as a schema
+          // This is technically not Swagger 2.0 compatible, but 
+          // fixSwagger2References will handle it later
+        } else {
+          // Extract type and related properties from schema
+          const schemaProps = ['type', 'format', 'enum', 'minimum', 'maximum', 
+                             'exclusiveMinimum', 'exclusiveMaximum', 'multipleOf',
+                             'minLength', 'maxLength', 'pattern', 'minItems', 
+                             'maxItems', 'uniqueItems', 'default'];
+          
+          for (const prop of schemaProps) {
+            if (param.schema[prop] !== undefined) {
+              newParam[prop] = param.schema[prop];
+            }
+          }
+          
+          // Handle array items
+          if (param.schema.type === 'array' && param.schema.items) {
+            newParam.items = param.schema.items;
+          }
+          
+          // We've extracted the schema properties, so we don't need the schema anymore
+          delete newParam.schema;
+        }
+      }
     }
-    return param;
+    
+    return newParam;
   });
 }
 
@@ -165,14 +291,17 @@ export function detectUnsupportedFeatures(openApiSpec: OpenAPISpec): string[] {
   
   // Check for oneOf, anyOf, allOf in schemas
   if (openApiSpec.components?.schemas) {
-    const schemas = Object.values(openApiSpec.components.schemas);
+    const schemas = Object.entries(openApiSpec.components.schemas);
     
-    for (const schema of schemas) {
+    for (const [schemaName, schema] of schemas) {
       if (schema.oneOf) {
-        warnings.push('oneOf schemas will be simplified to the first schema in the list with x-nullable if null is an option.');
+        warnings.push(`oneOf in schema "${schemaName}" will be simplified to the first schema in the list with x-nullable if null is an option.`);
       }
       if (schema.anyOf) {
-        warnings.push('anyOf schemas will be simplified to the first schema in the list with x-nullable if null is an option.');
+        warnings.push(`anyOf in schema "${schemaName}" will be simplified to the first schema in the list with x-nullable if null is an option.`);
+      }
+      if (schema.not) {
+        warnings.push(`"not" keyword in schema "${schemaName}" is not supported in Swagger 2.0 and will be simplified.`);
       }
     }
   }
@@ -334,6 +463,11 @@ export function convertOpenApiToSwagger(yamlContent: string): { content: string;
         swaggerSpec.paths[path] = {};
         const swaggerPath = swaggerSpec.paths[path];
         
+        // Handle path-level parameters if they exist
+        if (pathItem.parameters) {
+          swaggerPath.parameters = convertParameters(pathItem.parameters);
+        }
+        
         for (const [method, operation] of Object.entries(pathItem as any)) {
           if (method === 'parameters' || method === '$ref') continue;
           
@@ -350,6 +484,21 @@ export function convertOpenApiToSwagger(yamlContent: string): { content: string;
     // Fix all $ref paths and handle anyOf/oneOf
     const fixedSwaggerSpec = fixSwagger2References(swaggerSpec);
     
+    // Force one last pass to ensure all parameters have types
+    if (fixedSwaggerSpec.paths) {
+      for (const pathItem of Object.values(fixedSwaggerSpec.paths)) {
+        for (const [method, operation] of Object.entries(pathItem as any)) {
+          if (method === 'parameters') {
+            // Ensure path-level parameters have types
+            pathItem.parameters = ensureParameterTypes(pathItem.parameters);
+          } else if (method !== '$ref' && operation.parameters) {
+            // Ensure operation-level parameters have types
+            operation.parameters = ensureParameterTypes(operation.parameters);
+          }
+        }
+      }
+    }
+    
     // Convert to YAML
     return { 
       content: yaml.dump(fixedSwaggerSpec),
@@ -359,6 +508,59 @@ export function convertOpenApiToSwagger(yamlContent: string): { content: string;
     console.error('Conversion error:', error);
     throw error;
   }
+}
+
+// Convert parameters for OpenAPI to Swagger
+function convertParameters(parameters: any[]): any[] {
+  if (!parameters) return [];
+  
+  const convertedParams = parameters.map(param => {
+    // Handle cookie parameters (not supported in Swagger 2.0)
+    if (param.in === 'cookie') {
+      param = { ...param, in: 'header' };
+    }
+    
+    // Handle 'schema' in non-body parameters (move properties up a level)
+    if (param.in !== 'body' && param.schema) {
+      const converted = { ...param };
+      
+      if (param.schema.$ref) {
+        // If it's a reference, keep the schema
+        // It will be fixed by fixSwagger2References later
+      } else {
+        // Extract schema properties to parameter level
+        const schemaProps = ['type', 'format', 'enum', 'minimum', 'maximum', 
+                           'exclusiveMinimum', 'exclusiveMaximum', 'multipleOf',
+                           'minLength', 'maxLength', 'pattern', 'minItems', 
+                           'maxItems', 'uniqueItems', 'default'];
+        
+        for (const prop of schemaProps) {
+          if (param.schema[prop] !== undefined) {
+            converted[prop] = param.schema[prop];
+          }
+        }
+        
+        // Handle array items
+        if (param.schema.type === 'array' && param.schema.items) {
+          converted.items = param.schema.items;
+          // Swagger 2.0 requires 'items' for array types
+          if (!converted.items) {
+            converted.items = { type: 'string' };
+          }
+        }
+        
+        // Remove schema after extraction
+        delete converted.schema;
+      }
+      
+      return converted;
+    }
+    
+    return param;
+  });
+  
+  // Ensure all parameters have types
+  return ensureParameterTypes(convertedParams);
 }
 
 // Convert Swagger 2.0 to OpenAPI 3.x
@@ -413,6 +615,11 @@ export function convertSwaggerToOpenApi(yamlContent: string): { content: string;
         openApiSpec.paths[path] = {};
         const openApiPath = openApiSpec.paths[path];
         
+        // Handle path-level parameters
+        if (pathItem.parameters) {
+          openApiPath.parameters = convertSwaggerParametersToOpenApi(pathItem.parameters);
+        }
+        
         for (const [method, operation] of Object.entries(pathItem)) {
           if (method === 'parameters') continue;
           
@@ -421,9 +628,17 @@ export function convertSwaggerToOpenApi(yamlContent: string): { content: string;
             swaggerSpec.consumes || ['application/json'],
             swaggerSpec.produces || ['application/json']
           );
+          
+          // Preserve operation-level security
+          if ((operation as SwaggerOperation).security) {
+            openApiPath[method].security = (operation as SwaggerOperation).security;
+          }
         }
       }
     }
+    
+    // Fix any remaining issues
+    fixOpenApiReferences(openApiSpec);
     
     // Convert to YAML
     return { 
@@ -434,6 +649,67 @@ export function convertSwaggerToOpenApi(yamlContent: string): { content: string;
     console.error('Conversion error:', error);
     throw error;
   }
+}
+
+// Fix references in OpenAPI 3.0 spec
+function fixOpenApiReferences(obj: any): void {
+  if (typeof obj !== 'object' || obj === null) return;
+  
+  if (Array.isArray(obj)) {
+    obj.forEach(item => fixOpenApiReferences(item));
+    return;
+  }
+  
+  for (const [key, value] of Object.entries(obj)) {
+    if (key === '$ref' && typeof value === 'string') {
+      // Update #/definitions/ references to #/components/schemas/
+      obj[key] = value.replace('#/definitions/', '#/components/schemas/');
+    } else if (typeof value === 'object' && value !== null) {
+      fixOpenApiReferences(value);
+    }
+  }
+}
+
+// Convert Swagger parameters to OpenAPI 3.0 format
+function convertSwaggerParametersToOpenApi(parameters: any[]): any[] {
+  if (!parameters) return [];
+  
+  return parameters.map(param => {
+    // Clone to avoid mutating the original
+    const newParam = { ...param };
+    
+    // Convert non-body, non-formData parameters
+    if (param.in !== 'body' && param.in !== 'formData') {
+      // Move parameter-level type properties into a schema object
+      if (param.type || param.format || param.items || param.enum) {
+        newParam.schema = {
+          type: param.type,
+          format: param.format,
+          enum: param.enum
+        };
+        
+        // Handle array items
+        if (param.type === 'array' && param.items) {
+          newParam.schema.items = param.items;
+        }
+        
+        // Clean up null values
+        newParam.schema = Object.fromEntries(
+          Object.entries(newParam.schema).filter(([_, v]) => v !== undefined)
+        );
+        
+        // Remove properties that are now in schema
+        delete newParam.type;
+        delete newParam.format;
+        delete newParam.items;
+        delete newParam.enum;
+      }
+    }
+    
+    // Form and body params are handled separately in the operation conversion
+    
+    return newParam;
+  });
 }
 
 // Build server URL from Swagger spec
@@ -449,7 +725,11 @@ function buildServerUrl(swaggerSpec: SwaggerSpec): string {
 }
 
 // Convert Swagger operation to OpenAPI operation
-function convertSwaggerOperationToOpenApi(operation: SwaggerOperation, globalConsumes: string[], globalProduces: string[]): any {
+function convertSwaggerOperationToOpenApi(
+  operation: SwaggerOperation, 
+  globalConsumes: string[], 
+  globalProduces: string[]
+): any {
   const openApiOperation: any = {
     summary: operation.summary,
     description: operation.description,
@@ -471,17 +751,7 @@ function convertSwaggerOperationToOpenApi(operation: SwaggerOperation, globalCon
     
     // Handle regular parameters
     if (otherParams.length > 0) {
-      openApiOperation.parameters = otherParams.map((p: any) => {
-        // Clone the parameter to avoid mutating the original
-        const newParam = { ...p };
-        
-        // Handle required field
-        if (typeof newParam.required === 'undefined') {
-          newParam.required = false;
-        }
-        
-        return newParam;
-      });
+      openApiOperation.parameters = convertSwaggerParametersToOpenApi(otherParams);
     }
     
     // Handle body parameter - convert to requestBody
@@ -518,6 +788,16 @@ function convertSwaggerOperationToOpenApi(operation: SwaggerOperation, globalCon
           type: param.type,
           description: param.description
         };
+        
+        // Handle array type
+        if (param.type === 'array' && param.items) {
+          properties[param.name].items = param.items;
+        }
+        
+        // Handle enum
+        if (param.enum) {
+          properties[param.name].enum = param.enum;
+        }
         
         if (param.required) {
           required.push(param.name);
@@ -578,6 +858,7 @@ function convertSecurityScheme(scheme: any): any {
         result.type = 'apiKey';
         result.name = 'Authorization';
         result.in = 'header';
+        result.description = 'Bearer authentication. Example: "Bearer {token}"';
       }
       break;
     case 'apiKey':
@@ -585,11 +866,34 @@ function convertSecurityScheme(scheme: any): any {
       result.in = scheme.in;
       break;
     case 'oauth2':
-      result.flow = 'implicit';
-      result.scopes = scheme.flows?.implicit?.scopes || {};
-      if (scheme.flows?.implicit?.authorizationUrl) {
+      result.type = 'oauth2';
+      
+      // Handle the different oauth2 flows
+      if (scheme.flows.implicit) {
+        result.flow = 'implicit';
         result.authorizationUrl = scheme.flows.implicit.authorizationUrl;
+        result.scopes = scheme.flows.implicit.scopes || {};
+      } else if (scheme.flows.password) {
+        result.flow = 'password';
+        result.tokenUrl = scheme.flows.password.tokenUrl;
+        result.scopes = scheme.flows.password.scopes || {};
+      } else if (scheme.flows.clientCredentials) {
+        result.flow = 'application';
+        result.tokenUrl = scheme.flows.clientCredentials.tokenUrl;
+        result.scopes = scheme.flows.clientCredentials.scopes || {};
+      } else if (scheme.flows.authorizationCode) {
+        result.flow = 'accessCode';
+        result.authorizationUrl = scheme.flows.authorizationCode.authorizationUrl;
+        result.tokenUrl = scheme.flows.authorizationCode.tokenUrl;
+        result.scopes = scheme.flows.authorizationCode.scopes || {};
       }
+      break;
+    case 'openIdConnect':
+      // OpenID Connect doesn't map cleanly to Swagger 2.0
+      result.type = 'oauth2';
+      result.flow = 'implicit';
+      result.scopes = {};
+      result.description = 'OpenID Connect (OIDC) authentication. See documentation for details.';
       break;
   }
   
@@ -666,57 +970,7 @@ function convertOperation(operation: OpenAPIOperation): any {
   
   // Convert parameters
   if (operation.parameters) {
-    result.parameters = operation.parameters.map((param: any) => {
-      const converted: any = {
-        name: param.name,
-        in: param.in === 'cookie' ? 'header' : param.in, // Convert cookie params to header
-        description: param.description,
-        required: param.required,
-      };
-      
-      // Handle schema
-      if (param.schema) {
-        if (param.schema.$ref) {
-          converted.schema = param.schema;
-        } else {
-          // For non-body parameters, move schema properties up to parameter
-          if (param.in !== 'body') {
-            if (param.schema.type) {
-              converted.type = param.schema.type;
-              
-              // Handle array type
-              if (param.schema.type === 'array' && param.schema.items) {
-                converted.items = param.schema.items;
-              }
-              
-              // Handle enum
-              if (param.schema.enum) {
-                converted.enum = param.schema.enum;
-              }
-              
-              // Handle format
-              if (param.schema.format) {
-                converted.format = param.schema.format;
-              }
-            } else {
-              // Default to string if no type is specified
-              converted.type = 'string';
-            }
-          } else {
-            // For body parameters, keep the schema
-            converted.schema = param.schema;
-          }
-        }
-      } else if (param.in !== 'body' && !converted.type) {
-        // Ensure non-body parameters have a type
-        converted.type = 'string';
-      }
-      
-      return converted;
-    });
-    
-    // Ensure all parameters have required types
-    result.parameters = ensureParameterTypes(result.parameters);
+    result.parameters = convertParameters(operation.parameters);
   }
   
   // Convert requestBody to parameter
@@ -725,19 +979,17 @@ function convertOperation(operation: OpenAPIOperation): any {
       name: 'body',
       in: 'body',
       required: operation.requestBody.required,
+      description: operation.requestBody.description
     };
     
-    if (operation.requestBody.description) {
-      bodyParam.description = operation.requestBody.description;
-    }
-    
-    if (operation.requestBody.content && operation.requestBody.content['application/json']) {
-      bodyParam.schema = operation.requestBody.content['application/json'].schema;
-    } else if (operation.requestBody.content) {
-      // If application/json is not available, use the first content type
-      const firstContentType = Object.keys(operation.requestBody.content)[0];
-      if (firstContentType) {
-        bodyParam.schema = operation.requestBody.content[firstContentType].schema;
+    if (operation.requestBody.content) {
+      // Prefer application/json, but fall back to first available format
+      const contentType = operation.requestBody.content['application/json'] 
+        ? 'application/json' 
+        : Object.keys(operation.requestBody.content)[0];
+        
+      if (contentType) {
+        bodyParam.schema = operation.requestBody.content[contentType].schema;
       }
     }
     

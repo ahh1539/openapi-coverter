@@ -24,19 +24,88 @@ def fix_swagger2_references(obj: Any) -> Any:
             if key == '$ref' and isinstance(value, str):
                 # Replace components/schemas with definitions
                 result[key] = value.replace('#/components/schemas/', '#/definitions/')
-            # Handle anyOf (not supported in Swagger 2.0)
+            # Handle anyOf/oneOf (not supported in Swagger 2.0)
             elif key in ('anyOf', 'oneOf'):
-                # Pick the first non-null schema or just the first one
+                # Find if this is a nullable type pattern
                 schemas = value
-                non_null_schema = next((s for s in schemas if not s.get('type') == 'null'), schemas[0])
+                non_null_schemas = [s for s in schemas if not s.get('type') == 'null']
+                has_null_type = any(s.get('type') == 'null' for s in schemas)
                 
-                # Apply the non-null schema properties directly to the parent
-                for k, v in non_null_schema.items():
-                    result[k] = fix_swagger2_references(v)
-                
-                # Add x-nullable if null was an option
-                if any(s.get('type') == 'null' for s in schemas):
+                if len(non_null_schemas) == 1 and has_null_type:
+                    # Simple nullable case: use the non-null schema and add x-nullable
+                    non_null_schema = non_null_schemas[0]
+                    for k, v in non_null_schema.items():
+                        result[k] = fix_swagger2_references(v)
+                    # Add x-nullable to indicate that null is allowed
                     result['x-nullable'] = True
+                elif non_null_schemas:
+                    # Multiple non-null schemas - pick one that's not 'object' if possible
+                    most_specific = next((s for s in non_null_schemas if s.get('type') and s.get('type') != 'object'), 
+                                       non_null_schemas[0])
+                    
+                    # Apply the chosen schema
+                    for k, v in most_specific.items():
+                        result[k] = fix_swagger2_references(v)
+                    
+                    # Add description to explain this is simplified
+                    if 'description' not in result:
+                        result['description'] = 'This is a simplified representation of a more complex type.'
+                    elif 'simplified representation' not in result['description']:
+                        result['description'] += ' (This is a simplified representation of a more complex type.)'
+                    
+                    # Add x-nullable if null was an option
+                    if has_null_type:
+                        result['x-nullable'] = True
+                else:
+                    # Fallback to generic object
+                    result['type'] = 'object'
+                    result['description'] = result.get('description', 'Complex type that requires custom validation.')
+            # Handle allOf (partially supported)
+            elif key == 'allOf':
+                # Try to merge schemas (simplified approach)
+                merged_schema = {}
+                references = []
+                
+                # Process each schema in allOf
+                for schema in value:
+                    if '$ref' in schema:
+                        # Keep references separate for allOf
+                        references.append(fix_swagger2_references(schema))
+                    else:
+                        # For regular schemas, try to merge properties
+                        for prop_key, prop_value in schema.items():
+                            if prop_key == 'properties' and isinstance(prop_value, dict):
+                                if 'properties' not in merged_schema:
+                                    merged_schema['properties'] = {}
+                                merged_schema['properties'].update(prop_value)
+                            elif prop_key == 'required' and isinstance(prop_value, list):
+                                if 'required' not in merged_schema:
+                                    merged_schema['required'] = []
+                                merged_schema['required'].extend(prop_value)
+                            else:
+                                # For other keys, just use the latest value
+                                merged_schema[prop_key] = prop_value
+                
+                # Apply merged properties
+                for k, v in merged_schema.items():
+                    if k != 'allOf':  # Avoid circular reference
+                        result[k] = fix_swagger2_references(v)
+                
+                # If we have references, keep allOf
+                if references:
+                    result['allOf'] = references
+            # Handle 'not' schema (unsupported)
+            elif key == 'not':
+                # Can't represent "not" in Swagger 2.0
+                if 'description' not in result:
+                    result['description'] = ''
+                
+                if 'with exclusions' not in result.get('description', ''):
+                    result['description'] += ' (Complex type with exclusions that cannot be fully represented in Swagger 2.0.)'
+                
+                # Default to object type if none specified
+                if 'type' not in result:
+                    result['type'] = 'object'
             # For all other properties, recurse
             else:
                 result[key] = fix_swagger2_references(value)
@@ -56,12 +125,91 @@ def ensure_parameter_types(parameters: List[Dict[str, Any]]) -> List[Dict[str, A
     
     result = []
     for param in parameters:
-        if param.get('in') != 'body' and not param.get('schema') and not param.get('type'):
-            # Default to string if no type is specified
-            param['type'] = 'string'
-        result.append(param)
+        new_param = param.copy()
+        
+        if param.get('in') != 'body':
+            if not param.get('type') and not param.get('schema'):
+                # Default to string if no type is specified
+                new_param['type'] = 'string'
+            
+            # If we have a schema but no type, extract the type
+            if param.get('schema') and not param.get('type'):
+                if param['schema'].get('$ref'):
+                    # If schema is a reference, we'll leave it as is for now
+                    # (will be handled by fix_swagger2_references)
+                    pass
+                else:
+                    # Extract schema properties up to parameter level
+                    schema_props = ['type', 'format', 'enum', 'minimum', 'maximum', 
+                                  'exclusiveMinimum', 'exclusiveMaximum', 'multipleOf',
+                                  'minLength', 'maxLength', 'pattern', 'minItems', 
+                                  'maxItems', 'uniqueItems', 'default']
+                    
+                    for prop in schema_props:
+                        if prop in param['schema']:
+                            new_param[prop] = param['schema'][prop]
+                    
+                    # Handle array items
+                    if param['schema'].get('type') == 'array' and param['schema'].get('items'):
+                        new_param['items'] = param['schema']['items']
+                    
+                    # Remove schema after extraction
+                    if 'schema' in new_param:
+                        del new_param['schema']
+        
+        result.append(new_param)
     
     return result
+
+
+# Convert parameters for OpenAPI to Swagger
+def convert_parameters(parameters: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    if not parameters:
+        return []
+    
+    converted = []
+    for param in parameters:
+        # Handle cookie parameters (not supported in Swagger 2.0)
+        if param.get('in') == 'cookie':
+            param = {**param, 'in': 'header'}
+        
+        # Handle schema in non-body parameters
+        if param.get('in') != 'body' and param.get('schema'):
+            converted_param = param.copy()
+            
+            if param['schema'].get('$ref'):
+                # If it's a reference, keep the schema
+                # (will be handled by fix_swagger2_references later)
+                pass
+            else:
+                # Extract schema properties
+                schema_props = ['type', 'format', 'enum', 'minimum', 'maximum',
+                              'exclusiveMinimum', 'exclusiveMaximum', 'multipleOf',
+                              'minLength', 'maxLength', 'pattern', 'minItems',
+                              'maxItems', 'uniqueItems', 'default']
+                
+                for prop in schema_props:
+                    if prop in param['schema']:
+                        converted_param[prop] = param['schema'][prop]
+                
+                # Handle array items
+                if param['schema'].get('type') == 'array' and param['schema'].get('items'):
+                    converted_param['items'] = param['schema']['items']
+                    
+                    # Swagger 2.0 requires 'items' for array types
+                    if not converted_param.get('items'):
+                        converted_param['items'] = {'type': 'string'}
+                
+                # Remove schema after extraction
+                if 'schema' in converted_param:
+                    del converted_param['schema']
+            
+            converted.append(converted_param)
+        else:
+            converted.append(param)
+    
+    # Ensure all parameters have types
+    return ensure_parameter_types(converted)
 
 
 # Detect OpenAPI 3.x features that aren't fully supported in Swagger 2.0
@@ -76,15 +224,17 @@ def detect_unsupported_features(openapi_spec: Dict[str, Any]) -> List[str]:
     if openapi_spec.get('components', {}).get('links'):
         warnings.append('Links are not supported in Swagger 2.0 and will be removed.')
     
-    # Check for oneOf, anyOf, allOf in schemas
+    # Check for oneOf, anyOf, not in schemas
     if openapi_spec.get('components', {}).get('schemas'):
-        schemas = list(openapi_spec['components']['schemas'].values())
+        schemas = openapi_spec['components']['schemas']
         
-        for schema in schemas:
+        for schema_name, schema in schemas.items():
             if schema.get('oneOf'):
-                warnings.append('oneOf schemas will be simplified to the first schema in the list with x-nullable if null is an option.')
+                warnings.append(f'oneOf in schema "{schema_name}" will be simplified to the first schema in the list with x-nullable if null is an option.')
             if schema.get('anyOf'):
-                warnings.append('anyOf schemas will be simplified to the first schema in the list with x-nullable if null is an option.')
+                warnings.append(f'anyOf in schema "{schema_name}" will be simplified to the first schema in the list with x-nullable if null is an option.')
+            if schema.get('not'):
+                warnings.append(f'"not" keyword in schema "{schema_name}" is not supported in Swagger 2.0 and will be simplified.')
     
     # Check for multiple content types in request bodies
     if openapi_spec.get('paths'):
@@ -93,8 +243,8 @@ def detect_unsupported_features(openapi_spec: Dict[str, Any]) -> List[str]:
                 if method in ('parameters', '$ref'):
                     continue
                 
-                if (operation.get('requestBody', {}).get('content') and 
-                        len(operation['requestBody']['content']) > 1):
+                request_body = operation.get('requestBody', {})
+                if request_body.get('content') and len(request_body['content']) > 1:
                     warnings.append(f"Multiple request content types in {method.upper()} {path} will be consolidated to a single schema.")
                 
                 # Check for responses with multiple content types
@@ -132,7 +282,6 @@ def detect_unsupported_features(openapi_spec: Dict[str, Any]) -> List[str]:
 
 # Detect Swagger 2.0 features that aren't fully supported in OpenAPI 3.x
 def detect_swagger_unsupported_features(swagger_spec: Dict[str, Any]) -> List[str]:
-    # ... keep existing code (Swagger feature detection logic)
     warnings = []
     
     # Check for multiple produces/consumes at the global level
@@ -190,6 +339,10 @@ def convert_openapi_to_swagger(yaml_content: str) -> Dict[str, Any]:
             'securityDefinitions': {}
         }
         
+        # Add global security if available
+        if openapi_spec.get('security'):
+            swagger_spec['security'] = openapi_spec['security']
+        
         # Extract host and basePath from servers if available
         if openapi_spec.get('servers') and len(openapi_spec['servers']) > 0:
             server_url = urlparse(openapi_spec['servers'][0]['url'])
@@ -208,15 +361,15 @@ def convert_openapi_to_swagger(yaml_content: str) -> Dict[str, Any]:
             for key, scheme in openapi_spec['components']['securitySchemes'].items():
                 swagger_spec['securityDefinitions'][key] = convert_security_scheme(scheme)
         
-        # Convert global security if available
-        if openapi_spec.get('security'):
-            swagger_spec['security'] = openapi_spec['security']
-        
         # Convert paths
         if openapi_spec.get('paths'):
             for path, path_item in openapi_spec['paths'].items():
                 swagger_spec['paths'][path] = {}
                 swagger_path = swagger_spec['paths'][path]
+                
+                # Handle path-level parameters
+                if path_item.get('parameters'):
+                    swagger_path['parameters'] = convert_parameters(path_item['parameters'])
                 
                 for method, operation in path_item.items():
                     if method in ('parameters', '$ref'):
@@ -231,6 +384,18 @@ def convert_openapi_to_swagger(yaml_content: str) -> Dict[str, Any]:
         # Fix all $ref paths and handle anyOf/oneOf
         fixed_swagger_spec = fix_swagger2_references(swagger_spec)
         
+        # Final pass to ensure all parameters have types
+        if fixed_swagger_spec.get('paths'):
+            for path_item in fixed_swagger_spec['paths'].values():
+                # Ensure path-level parameters have types
+                if path_item.get('parameters'):
+                    path_item['parameters'] = ensure_parameter_types(path_item['parameters'])
+                
+                # Ensure operation-level parameters have types
+                for method, operation in path_item.items():
+                    if method != 'parameters' and operation.get('parameters'):
+                        operation['parameters'] = ensure_parameter_types(operation['parameters'])
+        
         # Convert to YAML
         return {
             'content': yaml.dump(fixed_swagger_spec),
@@ -241,9 +406,124 @@ def convert_openapi_to_swagger(yaml_content: str) -> Dict[str, Any]:
         raise
 
 
+# Convert OpenAPI operation to Swagger operation
+def convert_operation(operation: Dict[str, Any]) -> Dict[str, Any]:
+    result = {
+        'summary': operation.get('summary'),
+        'description': operation.get('description'),
+        'operationId': operation.get('operationId'),
+        'tags': operation.get('tags'),
+        'responses': {},
+    }
+    
+    # Clean up None values
+    result = {k: v for k, v in result.items() if v is not None}
+    
+    # Handle security requirements
+    if operation.get('security'):
+        result['security'] = operation['security']
+    
+    # Convert parameters
+    if operation.get('parameters'):
+        result['parameters'] = convert_parameters(operation['parameters'])
+    
+    # Convert requestBody to parameter
+    if operation.get('requestBody'):
+        body_param = {
+            'name': 'body',
+            'in': 'body',
+            'required': operation['requestBody'].get('required', False),
+        }
+        
+        if operation['requestBody'].get('description'):
+            body_param['description'] = operation['requestBody']['description']
+        
+        if operation['requestBody'].get('content'):
+            # Prefer application/json, but fall back to the first content type
+            content_type = 'application/json' if 'application/json' in operation['requestBody']['content'] else next(iter(operation['requestBody']['content']))
+            
+            if content_type:
+                body_param['schema'] = operation['requestBody']['content'][content_type].get('schema', {})
+        
+        if 'parameters' not in result:
+            result['parameters'] = []
+        
+        result['parameters'].append(body_param)
+    
+    # Convert responses
+    if operation.get('responses'):
+        for code, response in operation['responses'].items():
+            result['responses'][code] = {
+                'description': response.get('description', ''),
+            }
+            
+            if response.get('content'):
+                # Prefer application/json, but fall back to the first content type
+                content_type = 'application/json' if 'application/json' in response['content'] else next(iter(response['content']), None)
+                
+                if content_type and response['content'][content_type].get('schema'):
+                    result['responses'][code]['schema'] = response['content'][content_type]['schema']
+    
+    return result
+
+
+# Convert OpenAPI security scheme to Swagger security definition
+def convert_security_scheme(scheme: Dict[str, Any]) -> Dict[str, Any]:
+    result = {
+        'type': scheme.get('type'),
+    }
+    
+    # Clean up None values
+    result = {k: v for k, v in result.items() if v is not None}
+    
+    if scheme.get('type') == 'http':
+        if scheme.get('scheme') == 'basic':
+            result['type'] = 'basic'
+        elif scheme.get('scheme') == 'bearer':
+            result['type'] = 'apiKey'
+            result['name'] = 'Authorization'
+            result['in'] = 'header'
+            result['description'] = 'Bearer authentication. Example: "Bearer {token}"'
+    elif scheme.get('type') == 'apiKey':
+        result['name'] = scheme.get('name')
+        result['in'] = scheme.get('in')
+    elif scheme.get('type') == 'oauth2':
+        result['type'] = 'oauth2'
+        
+        # Handle the different oauth2 flows
+        flows = scheme.get('flows', {})
+        if flows.get('implicit'):
+            result['flow'] = 'implicit'
+            result['authorizationUrl'] = flows['implicit'].get('authorizationUrl')
+            result['scopes'] = flows['implicit'].get('scopes', {})
+        elif flows.get('password'):
+            result['flow'] = 'password'
+            result['tokenUrl'] = flows['password'].get('tokenUrl')
+            result['scopes'] = flows['password'].get('scopes', {})
+        elif flows.get('clientCredentials'):
+            result['flow'] = 'application'
+            result['tokenUrl'] = flows['clientCredentials'].get('tokenUrl')
+            result['scopes'] = flows['clientCredentials'].get('scopes', {})
+        elif flows.get('authorizationCode'):
+            result['flow'] = 'accessCode'
+            result['authorizationUrl'] = flows['authorizationCode'].get('authorizationUrl')
+            result['tokenUrl'] = flows['authorizationCode'].get('tokenUrl')
+            result['scopes'] = flows['authorizationCode'].get('scopes', {})
+    elif scheme.get('type') == 'openIdConnect':
+        # OpenID Connect doesn't map directly to Swagger 2.0
+        result['type'] = 'oauth2'
+        result['flow'] = 'implicit'
+        result['scopes'] = {}
+        result['description'] = 'OpenID Connect (OIDC) authentication. See documentation for details.'
+    
+    if scheme.get('description'):
+        result['description'] = scheme['description']
+    
+    return result
+
+
 # Build server URL from Swagger spec
 def build_server_url(swagger_spec: Dict[str, Any]) -> str:
-    # ... keep existing code (server URL building)
     scheme = swagger_spec.get('schemes', ['https'])[0] if swagger_spec.get('schemes') else 'https'
     host = swagger_spec.get('host', 'example.com')
     base_path = swagger_spec.get('basePath', '/')
@@ -253,7 +533,6 @@ def build_server_url(swagger_spec: Dict[str, Any]) -> str:
 
 # Convert Swagger 2.0 to OpenAPI 3.x
 def convert_swagger_to_openapi(yaml_content: str) -> Dict[str, Any]:
-    # ... keep existing code (Swagger to OpenAPI conversion setup)
     try:
         # Parse the YAML content to Python dictionary
         swagger_spec = yaml.safe_load(yaml_content)
@@ -276,6 +555,10 @@ def convert_swagger_to_openapi(yaml_content: str) -> Dict[str, Any]:
             }
         }
         
+        # Add global security if available
+        if swagger_spec.get('security'):
+            openapi_spec['security'] = swagger_spec['security']
+        
         # Convert host, basePath, and schemes to servers
         server_url = build_server_url(swagger_spec)
         openapi_spec['servers'] = [{'url': server_url}]
@@ -289,15 +572,15 @@ def convert_swagger_to_openapi(yaml_content: str) -> Dict[str, Any]:
             for key, definition in swagger_spec['securityDefinitions'].items():
                 openapi_spec['components']['securitySchemes'][key] = convert_security_definition_to_scheme(definition)
         
-        # Convert global security if available
-        if swagger_spec.get('security'):
-            openapi_spec['security'] = swagger_spec['security']
-        
         # Convert paths
         if swagger_spec.get('paths'):
             for path, path_item in swagger_spec['paths'].items():
                 openapi_spec['paths'][path] = {}
                 openapi_path = openapi_spec['paths'][path]
+                
+                # Handle path-level parameters
+                if path_item.get('parameters'):
+                    openapi_path['parameters'] = convert_swagger_parameters_to_openapi(path_item['parameters'])
                 
                 for method, operation in path_item.items():
                     if method == 'parameters':
@@ -308,6 +591,13 @@ def convert_swagger_to_openapi(yaml_content: str) -> Dict[str, Any]:
                         swagger_spec.get('consumes', ['application/json']),
                         swagger_spec.get('produces', ['application/json'])
                     )
+                    
+                    # Preserve operation-level security
+                    if operation.get('security'):
+                        openapi_path[method]['security'] = operation['security']
+        
+        # Fix references
+        fix_openapi_references(openapi_spec)
         
         # Convert to YAML
         return {
@@ -319,10 +609,68 @@ def convert_swagger_to_openapi(yaml_content: str) -> Dict[str, Any]:
         raise
 
 
+# Fix references in OpenAPI 3.0 spec
+def fix_openapi_references(obj: Any) -> None:
+    if not isinstance(obj, dict) and not isinstance(obj, list):
+        return
+    
+    if isinstance(obj, list):
+        for item in obj:
+            fix_openapi_references(item)
+        return
+    
+    for key, value in list(obj.items()):
+        if key == '$ref' and isinstance(value, str):
+            # Update #/definitions/ references to #/components/schemas/
+            obj[key] = value.replace('#/definitions/', '#/components/schemas/')
+        elif isinstance(value, (dict, list)):
+            fix_openapi_references(value)
+
+
+# Convert Swagger parameters to OpenAPI 3.0 format
+def convert_swagger_parameters_to_openapi(parameters: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    if not parameters:
+        return []
+    
+    result = []
+    for param in parameters:
+        # Clone to avoid mutating the original
+        new_param = param.copy()
+        
+        # Convert non-body, non-formData parameters
+        if param.get('in') not in ('body', 'formData'):
+            # Move parameter-level type properties into a schema object
+            if param.get('type') or param.get('format') or param.get('items') or param.get('enum'):
+                new_param['schema'] = {
+                    'type': param.get('type'),
+                    'format': param.get('format'),
+                    'enum': param.get('enum')
+                }
+                
+                # Clean up None values
+                new_param['schema'] = {k: v for k, v in new_param['schema'].items() if v is not None}
+                
+                # Handle array items
+                if param.get('type') == 'array' and param.get('items'):
+                    new_param['schema']['items'] = param['items']
+                
+                # Remove properties that are now in schema
+                for prop in ('type', 'format', 'items', 'enum'):
+                    if prop in new_param:
+                        del new_param[prop]
+        
+        # Form and body params are handled separately in the operation conversion
+        result.append(new_param)
+    
+    return result
+
+
 # Convert Swagger operation to OpenAPI operation
-def convert_swagger_operation_to_openapi(operation: Dict[str, Any], 
-                                         global_consumes: List[str], 
-                                         global_produces: List[str]) -> Dict[str, Any]:
+def convert_swagger_operation_to_openapi(
+    operation: Dict[str, Any], 
+    global_consumes: List[str], 
+    global_produces: List[str]
+) -> Dict[str, Any]:
     # ... keep existing code (Swagger operation conversion)
     openapi_operation = {
         'summary': operation.get('summary'),
@@ -347,16 +695,7 @@ def convert_swagger_operation_to_openapi(operation: Dict[str, Any],
         
         # Handle regular parameters
         if other_params:
-            openapi_operation['parameters'] = []
-            for p in other_params:
-                # Clone the parameter to avoid mutating the original
-                new_param = p.copy()
-                
-                # Handle required field
-                if 'required' not in new_param:
-                    new_param['required'] = False
-                
-                openapi_operation['parameters'].append(new_param)
+            openapi_operation['parameters'] = convert_swagger_parameters_to_openapi(other_params)
         
         # Handle body parameter - convert to requestBody
         if body_params:
@@ -394,6 +733,14 @@ def convert_swagger_operation_to_openapi(operation: Dict[str, Any],
                 
                 # Clean up None values
                 properties[param['name']] = {k: v for k, v in properties[param['name']].items() if v is not None}
+                
+                # Handle array type
+                if param.get('type') == 'array' and param.get('items'):
+                    properties[param['name']]['items'] = param['items']
+                
+                # Handle enum
+                if param.get('enum'):
+                    properties[param['name']]['enum'] = param['enum']
                 
                 if param.get('required'):
                     required.append(param['name'])
@@ -434,38 +781,6 @@ def convert_swagger_operation_to_openapi(operation: Dict[str, Any],
                     }
     
     return openapi_operation
-
-
-# Convert OpenAPI security scheme to Swagger security definition
-def convert_security_scheme(scheme: Dict[str, Any]) -> Dict[str, Any]:
-    # ... keep existing code (security scheme conversion)
-    result = {
-        'type': scheme.get('type'),
-    }
-    
-    if scheme.get('type') == 'http':
-        if scheme.get('scheme') == 'basic':
-            result['type'] = 'basic'
-        elif scheme.get('scheme') == 'bearer':
-            result['type'] = 'apiKey'
-            result['name'] = 'Authorization'
-            result['in'] = 'header'
-    elif scheme.get('type') == 'apiKey':
-        result['name'] = scheme.get('name')
-        result['in'] = scheme.get('in')
-    elif scheme.get('type') == 'oauth2':
-        result['flow'] = 'implicit'
-        result['scopes'] = scheme.get('flows', {}).get('implicit', {}).get('scopes', {})
-        if scheme.get('flows', {}).get('implicit', {}).get('authorizationUrl'):
-            result['authorizationUrl'] = scheme['flows']['implicit']['authorizationUrl']
-    
-    if scheme.get('description'):
-        result['description'] = scheme['description']
-    
-    # Clean up None values
-    result = {k: v for k, v in result.items() if v is not None}
-    
-    return result
 
 
 # Convert Swagger security definition to OpenAPI security scheme
@@ -511,118 +826,6 @@ def convert_security_definition_to_scheme(definition: Dict[str, Any]) -> Dict[st
                 'tokenUrl': definition.get('tokenUrl'),
                 'scopes': definition.get('scopes', {})
             }
-    
-    return result
-
-
-# Convert OpenAPI operation to Swagger operation
-def convert_operation(operation: Dict[str, Any]) -> Dict[str, Any]:
-    result = {
-        'summary': operation.get('summary'),
-        'description': operation.get('description'),
-        'operationId': operation.get('operationId'),
-        'tags': operation.get('tags'),
-        'responses': {},
-    }
-    
-    # Clean up None values
-    result = {k: v for k, v in result.items() if v is not None}
-    
-    # Handle security requirements (transfer them to the Swagger operation)
-    if operation.get('security'):
-        result['security'] = operation['security']
-    
-    # Convert parameters
-    if operation.get('parameters'):
-        result['parameters'] = []
-        for param in operation['parameters']:
-            converted = {
-                'name': param.get('name'),
-                'in': 'header' if param.get('in') == 'cookie' else param.get('in'),  # Convert cookie params to header
-                'description': param.get('description'),
-                'required': param.get('required'),
-            }
-            
-            # Handle schema
-            if param.get('schema'):
-                if param['schema'].get('$ref'):
-                    converted['schema'] = param['schema']
-                else:
-                    # For non-body parameters, move schema properties up to parameter
-                    if param.get('in') != 'body':
-                        if param['schema'].get('type'):
-                            converted['type'] = param['schema']['type']
-                            
-                            # Handle array type
-                            if param['schema']['type'] == 'array' and param['schema'].get('items'):
-                                converted['items'] = param['schema']['items']
-                            
-                            # Handle enum
-                            if param['schema'].get('enum'):
-                                converted['enum'] = param['schema']['enum']
-                            
-                            # Handle format
-                            if param['schema'].get('format'):
-                                converted['format'] = param['schema']['format']
-                        else:
-                            # Default to string if no type is specified
-                            converted['type'] = 'string'
-                    else:
-                        # For body parameters, keep the schema
-                        converted['schema'] = param['schema']
-            elif param.get('in') != 'body' and not converted.get('type'):
-                # Ensure non-body parameters have a type
-                converted['type'] = 'string'
-            
-            # Clean up None values
-            converted = {k: v for k, v in converted.items() if v is not None}
-            
-            result['parameters'].append(converted)
-        
-        # Ensure all parameters have required types
-        result['parameters'] = ensure_parameter_types(result['parameters'])
-    
-    # Convert requestBody to parameter
-    if operation.get('requestBody'):
-        body_param = {
-            'name': 'body',
-            'in': 'body',
-            'required': operation['requestBody'].get('required', False),
-        }
-        
-        if operation['requestBody'].get('description'):
-            body_param['description'] = operation['requestBody']['description']
-        
-        if operation['requestBody'].get('content', {}).get('application/json', {}).get('schema'):
-            body_param['schema'] = operation['requestBody']['content']['application/json']['schema']
-        elif operation['requestBody'].get('content'):
-            # If application/json is not available, use the first content type
-            first_content_type = next(iter(operation['requestBody']['content']), None)
-            if first_content_type:
-                body_param['schema'] = operation['requestBody']['content'][first_content_type]['schema']
-        
-        if 'parameters' not in result:
-            result['parameters'] = []
-        
-        result['parameters'].append(body_param)
-    
-    # Convert responses
-    if operation.get('responses'):
-        for code, response in operation['responses'].items():
-            result['responses'][code] = {
-                'description': response.get('description', ''),
-            }
-            
-            if response.get('content'):
-                # Prefer application/json, but fall back to first available format
-                content_type = None
-                if 'application/json' in response['content']:
-                    content_type = 'application/json'
-                else:
-                    content_type = next(iter(response['content']), None)
-                    
-                if content_type and response['content'][content_type].get('schema'):
-                    result['responses'][code]['schema'] = response['content'][content_type]['schema']
     
     return result
 
