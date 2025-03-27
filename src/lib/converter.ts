@@ -1,4 +1,3 @@
-
 import * as yaml from 'js-yaml';
 
 // Define TypeScript interfaces for OpenAPI objects
@@ -326,7 +325,7 @@ export function detectUnsupportedFeatures(openApiSpec: OpenAPISpec): string[] {
   // Check for multiple content types in request bodies
   if (openApiSpec.paths) {
     for (const [path, pathItem] of Object.entries(openApiSpec.paths)) {
-      for (const [method, operation] of Object.entries(pathItem as any)) {
+      for (const [method, operation] of Object.entries(pathItem as OpenAPIPathItem)) {
         if (method === 'parameters' || method === '$ref') continue;
         
         const op = operation as OpenAPIOperation;
@@ -355,7 +354,7 @@ export function detectUnsupportedFeatures(openApiSpec: OpenAPISpec): string[] {
   let hasCookieParams = false;
   if (openApiSpec.paths) {
     for (const pathItem of Object.values(openApiSpec.paths)) {
-      for (const [method, operation] of Object.entries(pathItem as any)) {
+      for (const [method, operation] of Object.entries(pathItem as OpenAPIPathItem)) {
         if (method === 'parameters' || method === '$ref') continue;
         
         const op = operation as OpenAPIOperation;
