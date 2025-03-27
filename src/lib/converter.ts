@@ -1,3 +1,4 @@
+
 import * as yaml from 'js-yaml';
 
 // Define TypeScript interfaces for OpenAPI objects
@@ -396,6 +397,10 @@ export function detectUnsupportedFeatures(openApiSpec: OpenAPISpec): string[] {
           if (param.in === 'cookie') {
             warnings.push(`Cookie parameter at path level for "${path}" will be converted to a header parameter.`);
           }
+          // Check for parameters with schema containing only a $ref
+          if (param.in && param.in !== 'body' && param.schema && param.schema.$ref && Object.keys(param.schema).length === 1) {
+            warnings.push(`Parameter with schema containing only $ref at path level for "${path}" will have $ref moved to parameter level.`);
+          }
         }
       }
       
@@ -624,7 +629,7 @@ function convertParameters(parameters: any[]): any[] {
     }
     
     // Handle schema with only a $ref - move $ref directly to parameter level
-    if (param.schema && param.schema.$ref && Object.keys(param.schema).length === 1) {
+    if (param.in !== 'body' && param.schema && param.schema.$ref && Object.keys(param.schema).length === 1) {
       return {
         ...param,
         $ref: param.schema.$ref.replace('#/components/schemas/', '#/definitions/'),
@@ -637,8 +642,9 @@ function convertParameters(parameters: any[]): any[] {
       const converted = { ...param };
       
       if (param.schema.$ref) {
-        // If it's a reference, keep the schema
-        // It will be fixed by fixSwagger2References later
+        // If it's a reference, move it directly to the parameter level
+        converted.$ref = param.schema.$ref.replace('#/components/schemas/', '#/definitions/');
+        delete converted.schema;
       } else {
         // Extract schema properties to parameter level
         const schemaProps = ['type', 'format', 'enum', 'minimum', 'maximum', 
