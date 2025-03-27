@@ -883,7 +883,12 @@ function convertSwaggerParametersToOpenApi(parameters: any[]): any[] {
         // Handle x-nullable (convert to nullable: true in OpenAPI 3.0)
         if (param['x-nullable'] === true) {
           newParam.schema.nullable = true;
-          delete newParam['x-nullable'];
+          delete newParam['x-nullable']; // Clean up Swagger 2.0 extension
+        }
+
+        // If the parameter is not required (and not 'in: body'), it's nullable in OpenAPI 3.0
+        if (param.required === false) {
+           newParam.schema.nullable = true;
         }
         
         // Handle array items
@@ -891,9 +896,9 @@ function convertSwaggerParametersToOpenApi(parameters: any[]): any[] {
           newParam.schema.items = param.items;
         }
         
-        // Clean up null values
+        // Clean up null/undefined values from the schema object
         newParam.schema = Object.fromEntries(
-          Object.entries(newParam.schema).filter(([_, v]) => v !== undefined)
+          Object.entries(newParam.schema).filter(([_, v]) => v !== undefined && v !== null)
         );
         
         // Remove properties that are now in schema
