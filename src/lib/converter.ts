@@ -189,34 +189,84 @@ function fixSwagger2References(obj: any): any {
           }
         } 
         else if (nonNullSchemas.length > 0) {
-          // Multiple non-null schemas - try to find the most specific one
-          const preferredTypeOrders = ['boolean', 'integer', 'number', 'string', 'array', 'object'];
-          
-          // Sort schemas by preference (boolean > integer > number > string > array > object)
-          const sortedSchemas = [...nonNullSchemas].sort((a, b) => {
-            const aTypeIndex = a.type ? preferredTypeOrders.indexOf(a.type) : Infinity;
-            const bTypeIndex = b.type ? preferredTypeOrders.indexOf(b.type) : Infinity;
-            return aTypeIndex - bTypeIndex;
-          });
-          
-          // Use the highest priority schema (most specific type) or the first one if no types
-          const chosenSchema = sortedSchemas[0];
-          
-          // Apply the chosen schema properties to the parent
-          Object.entries(chosenSchema).forEach(([k, v]) => {
-            result[k] = fixSwagger2References(v);
-          });
-          
-          // Add description about this being a simplified representation
-          const originalTypes = nonNullSchemas.map(s => s.type || (s.$ref ? 'reference type' : 'unspecified type')).join(', ');
-          result.description = (result.description || '') + 
-            ` (Simplified from a complex ${key} structure with multiple possible types: ${originalTypes}. Chosen representation may not capture all valid values.)`;
-          
-          // Add x-nullable if null was an option
-          if (hasNullType) {
-            result['x-nullable'] = true;
+          // Multiple non-null schemas - choose based on user preference and specific rules
+          let chosenSchema: any;
+
+          const hasRef = nonNullSchemas.some(s => s.$ref);
+          const hasString = nonNullSchemas.some(s => s.type === 'string');
+          const hasInteger = nonNullSchemas.some(s => s.type === 'integer');
+          // const hasBoolean = nonNullSchemas.some(s => s.type === 'boolean'); // Not currently needed for specific rules
+
+          // Rule 1: Prioritize $ref if present with string (for BestCardRequest.spend_category)
+          // Check if exactly two schemas, one is $ref, one is string
+          if (nonNullSchemas.length === 2 && hasRef && hasString) {
+              chosenSchema = nonNullSchemas.find(s => s.$ref);
           }
-        } 
+          // Rule 2: Prioritize string if present with integer (for ValidationError.loc.items)
+          // Check if exactly two schemas, one is string, one is integer
+          else if (nonNullSchemas.length === 2 && hasString && hasInteger) {
+              chosenSchema = nonNullSchemas.find(s => s.type === 'string');
+          }
+          // Fallback: Use the first schema based on preferred type order
+          else {
+              // Corrected preference order: boolean > string > integer > number > array > object
+              const preferredTypeOrders = ['boolean', 'string', 'integer', 'number', 'array', 'object'];
+              const sortedSchemas = [...nonNullSchemas].sort((a, b) => {
+                  const aTypeIndex = a.type ? preferredTypeOrders.indexOf(a.type) : Infinity;
+                  const bTypeIndex = b.type ? preferredTypeOrders.indexOf(b.type) : Infinity;
+                  // If types are the same or one is missing, don't change order arbitrarily
+                  if (aTypeIndex === bTypeIndex) return 0;
+                  return aTypeIndex - bTypeIndex;
+              });
+              // Ensure we pick one if sorting fails or array empty/invalid
+              chosenSchema = sortedSchemas[0] || nonNullSchemas[0];
+          }
+
+          // Ensure chosenSchema is defined before proceeding
+          if (!chosenSchema) {
+             // Handle error or default case, e.g., fallback to generic object
+             result.type = 'object';
+             result.description = (result.description || '') +
+               ` (Simplified from a complex ${key} structure that couldn't be mapped to a specific type in Swagger 2.0.)`;
+             // Add x-nullable if null was an option, even in fallback
+             if (hasNullType) {
+               result['x-nullable'] = true;
+             }
+          } else {
+            // Apply the chosen schema properties to the parent
+            Object.entries(chosenSchema).forEach(([k, v]) => {
+              // Explicitly fix $ref path before assigning
+              if (k === '$ref' && typeof v === 'string') {
+                result[k] = v.replace('#/components/schemas/', '#/definitions/');
+              }
+              // Avoid infinite recursion if chosenSchema contains the key itself (e.g., description)
+              // Also prevent overwriting existing properties like 'description' added by simplification logic
+              else if (k !== key && !(k in result)) {
+                  result[k] = fixSwagger2References(v);
+              } else if (k === 'description' && result.description && typeof v === 'string') {
+                  // Append descriptions if both exist and aren't the simplification message
+                  if (!result.description.includes('Simplified from a complex')) {
+                    result.description += ` | From ${key}: ${fixSwagger2References(v)}`;
+                  }
+              } else if (!(k in result)) { // Only add if not already present
+                  result[k] = fixSwagger2References(v);
+              }
+            });
+
+            // Add description about this being a simplified representation, only if not already added
+            const originalTypes = nonNullSchemas.map(s => s.type || (s.$ref ? 'reference type' : 'unspecified type')).join(', ');
+            const simplificationMessage = ` (Simplified from a complex ${key} structure with multiple possible types: ${originalTypes}. Chosen representation may not capture all valid values.)`;
+            // Check if the simplification message is already part of the description
+            if (!result.description || !result.description.includes(simplificationMessage)) {
+                result.description = (result.description || '') + simplificationMessage;
+            }
+
+            // Add x-nullable if null was an option
+            if (hasNullType) {
+              result['x-nullable'] = true;
+            }
+          }
+        }
         else {
           // Fallback to generic object type if no clear schema found
           result.type = 'object';
@@ -637,39 +687,47 @@ function convertParameters(parameters: any[]): any[] {
       };
     }
     
-    // Handle 'schema' in non-body parameters (move properties up a level)
-    if (param.in !== 'body' && param.schema) {
-      const converted = { ...param };
-      
-      if (param.schema.$ref) {
-        // If it's a reference, move it directly to the parameter level
-        converted.$ref = param.schema.$ref.replace('#/components/schemas/', '#/definitions/');
-        delete converted.schema;
-      } else {
-        // Extract schema properties to parameter level
-        const schemaProps = ['type', 'format', 'enum', 'minimum', 'maximum', 
-                           'exclusiveMinimum', 'exclusiveMaximum', 'multipleOf',
-                           'minLength', 'maxLength', 'pattern', 'minItems', 
-                           'maxItems', 'uniqueItems', 'default'];
-        
-        for (const prop of schemaProps) {
-          if (param.schema[prop] !== undefined) {
-            converted[prop] = param.schema[prop];
-          }
-        }
-        
-        // Preserve boolean type
-        if (param.schema.type === 'boolean') {
-          converted.type = 'boolean';
-        }
-        
-        // Handle nullable by adding x-nullable extension
-        if (param.schema.nullable === true) {
-          converted['x-nullable'] = true;
-        }
-        
-        // Handle array items
-        if (param.schema.type === 'array' && param.schema.items) {
+        // Handle 'schema' in non-body parameters (move properties up a level)
+        if (param.in !== 'body' && param.schema) {
+            const converted = { ...param };
+            const schema = param.schema; // Use a shorter alias
+
+            if (schema.$ref) {
+                // If it's a reference, move it directly to the parameter level
+                converted.$ref = schema.$ref.replace('#/components/schemas/', '#/definitions/');
+                delete converted.schema;
+            } else {
+                // Extract schema properties to parameter level
+                const schemaProps = ['type', 'format', 'enum', 'minimum', 'maximum',
+                                   'exclusiveMinimum', 'exclusiveMaximum', 'multipleOf',
+                                   'minLength', 'maxLength', 'pattern', 'minItems',
+                                   'maxItems', 'uniqueItems', 'default'];
+
+                for (const prop of schemaProps) {
+                    if (schema[prop] !== undefined) {
+                        converted[prop] = schema[prop];
+                    }
+                }
+
+                // Explicitly handle boolean type, especially if it came from anyOf[boolean, null]
+                // The fixSwagger2References should have simplified this to type: 'boolean', nullable: true
+                if (schema.type === 'boolean' || (schema.anyOf && schema.anyOf.some((s: any) => s.type === 'boolean') && schema.anyOf.some((s: any) => s.type === 'null'))) {
+                    converted.type = 'boolean';
+                    // Note: x-nullable is handled below based on schema.nullable
+                }
+
+                // Handle nullable by adding x-nullable extension (Swagger 2.0 way)
+                // Or if it was simplified from anyOf[type, null] by fixSwagger2References
+                if (schema.nullable === true || schema['x-nullable'] === true) {
+                    // For non-body parameters, required: false implies nullable in Swagger 2.0
+                    // So we don't strictly need x-nullable, but it can be kept for clarity if desired.
+                    // Let's remove it for cleaner Swagger 2.0 unless strictly needed.
+                    // converted['x-nullable'] = true; // Optional: keep for clarity
+                    delete converted['x-nullable']; // Remove if present from simplification
+                }
+
+                // Handle array items
+                if (schema.type === 'array' && schema.items) {
           converted.items = param.schema.items;
           // Swagger 2.0 requires 'items' for array types
           if (!converted.items) {
