@@ -53,12 +53,24 @@ const CodeInput = ({
     }
   }, [currentContent]);
 
-  // Notify parent about content changes
+  // Notify parent about content changes and validation status
   useEffect(() => {
-    if (onContentChange) {
-      onContentChange(inputContent.trim().length > 0);
+    if (!inputContent.trim()) {
+      if (onContentChange) onContentChange(false);
+      return;
     }
-  }, [inputContent, onContentChange]);
+    
+    // Check if content is both format valid and spec type valid before reporting as ready
+    if (validationStatus && validationStatus.formatValid && validationStatus.specTypeValid) {
+      if (onContentChange) onContentChange(true);
+      
+      // Automatically submit valid content to parent
+      const contentType = activeTab === 'yaml' ? 'yaml' : 'json';
+      onContentSubmit(inputContent, `api-spec.${contentType}`);
+    } else {
+      if (onContentChange) onContentChange(false);
+    }
+  }, [validationStatus, onContentChange, inputContent, activeTab, onContentSubmit]);
 
   // Validate input whenever content, active tab, or conversion direction changes
   useEffect(() => {

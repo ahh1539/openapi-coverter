@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect } from 'react';
 import { toast } from 'sonner';
 import { useIsMobile } from '@/hooks/use-mobile';
@@ -36,17 +37,21 @@ const Index = () => {
     setFilename(name);
     setSwaggerContent(null);
     setConversionWarnings([]);
-    setHasInput(true);
     
-    const specType = detectSpecType(content);
-    
-    if ((direction === ConversionDirection.OPENAPI_TO_SWAGGER && specType !== 'openapi3') ||
-        (direction === ConversionDirection.SWAGGER_TO_OPENAPI && specType !== 'swagger2')) {
-      const expectedType = direction === ConversionDirection.OPENAPI_TO_SWAGGER ? 'OpenAPI 3.x' : 'Swagger 2.0';
-      const actualType = specType === 'openapi3' ? 'OpenAPI 3.x' : specType === 'swagger2' ? 'Swagger 2.0' : 'Unknown';
-      toast.error(`Expected ${expectedType} specification but detected ${actualType}`);
-      setYamlContent(null);
-      setFilename('');
+    if (content) {
+      setHasInput(true);
+      const specType = detectSpecType(content);
+      
+      if ((direction === ConversionDirection.OPENAPI_TO_SWAGGER && specType !== 'openapi3') ||
+          (direction === ConversionDirection.SWAGGER_TO_OPENAPI && specType !== 'swagger2')) {
+        const expectedType = direction === ConversionDirection.OPENAPI_TO_SWAGGER ? 'OpenAPI 3.x' : 'Swagger 2.0';
+        const actualType = specType === 'openapi3' ? 'OpenAPI 3.x' : specType === 'swagger2' ? 'Swagger 2.0' : 'Unknown';
+        toast.error(`Expected ${expectedType} specification but detected ${actualType}`);
+        setYamlContent(null);
+        setFilename('');
+        setHasInput(false);
+      }
+    } else {
       setHasInput(false);
     }
   };
@@ -56,7 +61,7 @@ const Index = () => {
     setFilename(name);
     setSwaggerContent(null);
     setConversionWarnings([]);
-    setHasInput(true);
+    setHasInput(!!content);
   };
   
   const handleContentChange = (hasContent: boolean) => {
@@ -138,6 +143,32 @@ const Index = () => {
     setInputMethod(value as 'upload' | 'paste');
   };
 
+  const renderConvertButton = () => {
+    return (
+      <div className={`flex justify-center ${hasInput ? 'animate-fade-in' : 'hidden'}`}>
+        <button
+          onClick={handleConvert}
+          disabled={isConverting}
+          className={`glass-button px-6 py-3 font-medium flex items-center justify-center ${
+            isConverting ? 'opacity-70 cursor-not-allowed' : ''
+          }`}
+        >
+          {isConverting ? (
+            <>
+              <div className="animate-spin h-4 w-4 mr-2 border-2 border-current border-t-transparent rounded-full"></div>
+              Converting...
+            </>
+          ) : (
+            <>
+              {direction === ConversionDirection.OPENAPI_TO_SWAGGER ? 'Convert to Swagger 2.0' : 'Convert to OpenAPI 3.0'}
+              <ArrowRight className="ml-2 h-4 w-4" />
+            </>
+          )}
+        </button>
+      </div>
+    );
+  };
+
   return (
     <div className="min-h-screen flex flex-col">
       <Header />
@@ -210,29 +241,7 @@ const Index = () => {
               </TabsContent>
             </Tabs>
             
-            {yamlContent && (
-              <div className="mt-8 flex justify-center animate-fade-in">
-                <button
-                  onClick={handleConvert}
-                  disabled={isConverting}
-                  className={`glass-button px-6 py-3 font-medium flex items-center justify-center ${
-                    isConverting ? 'opacity-70 cursor-not-allowed' : ''
-                  }`}
-                >
-                  {isConverting ? (
-                    <>
-                      <div className="animate-spin h-4 w-4 mr-2 border-2 border-current border-t-transparent rounded-full"></div>
-                      Converting...
-                    </>
-                  ) : (
-                    <>
-                      {direction === ConversionDirection.OPENAPI_TO_SWAGGER ? 'Convert to Swagger 2.0' : 'Convert to OpenAPI 3.0'}
-                      <ArrowRight className="ml-2 h-4 w-4" />
-                    </>
-                  )}
-                </button>
-              </div>
-            )}
+            {renderConvertButton()}
             
             {conversionWarnings.length > 0 && (
               <ConversionWarnings warnings={conversionWarnings} />
@@ -291,29 +300,7 @@ const Index = () => {
                     </TabsContent>
                   </Tabs>
                   
-                  {yamlContent && (
-                    <div className="mt-8 flex justify-center animate-fade-in">
-                      <button
-                        onClick={handleConvert}
-                        disabled={isConverting}
-                        className={`glass-button px-6 py-3 font-medium flex items-center justify-center ${
-                          isConverting ? 'opacity-70 cursor-not-allowed' : ''
-                        }`}
-                      >
-                        {isConverting ? (
-                          <>
-                            <div className="animate-spin h-4 w-4 mr-2 border-2 border-current border-t-transparent rounded-full"></div>
-                            Converting...
-                          </>
-                        ) : (
-                          <>
-                            {direction === ConversionDirection.OPENAPI_TO_SWAGGER ? 'Convert to Swagger 2.0' : 'Convert to OpenAPI 3.0'}
-                            <ArrowRight className="ml-2 h-4 w-4" />
-                          </>
-                        )}
-                      </button>
-                    </div>
-                  )}
+                  {renderConvertButton()}
                 </div>
               </ResizablePanel>
               
