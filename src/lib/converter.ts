@@ -1,3 +1,4 @@
+
 import * as yaml from 'js-yaml';
 
 // Define TypeScript interfaces for OpenAPI objects
@@ -57,9 +58,25 @@ interface SwaggerSpec {
   consumes?: string[];
   produces?: string[];
   security?: any[];
-  paths?: Record<string, any>;
+  paths?: Record<string, SwaggerPathItem>;
   definitions?: Record<string, any>;
   securityDefinitions?: Record<string, any>;
+}
+
+// Add a SwaggerPathItem interface to match OpenAPIPathItem
+interface SwaggerPathItem {
+  parameters?: any[];
+  $ref?: string;
+  summary?: string;
+  description?: string;
+  get?: SwaggerOperation;
+  put?: SwaggerOperation;
+  post?: SwaggerOperation;
+  delete?: SwaggerOperation;
+  options?: SwaggerOperation;
+  head?: SwaggerOperation;
+  patch?: SwaggerOperation;
+  trace?: SwaggerOperation;
 }
 
 // Define interfaces for Swagger operation and response objects
