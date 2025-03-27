@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect } from 'react';
 import { toast } from 'sonner';
 import { Download, Copy, Check, ChevronUp, ChevronDown, FileIcon, FileJson, FileText, Eye } from 'lucide-react';
@@ -17,12 +18,23 @@ const ConversionResult = ({ content, filename }: ConversionResultProps) => {
   const [isExpanded, setIsExpanded] = useState(false);
   const [activeFormat, setActiveFormat] = useState('yaml');
   const [isVisualizerOpen, setIsVisualizerOpen] = useState(false);
+  const [processedContent, setProcessedContent] = useState<string>('');
 
   console.log('ConversionResult received content:', content ? content.substring(0, 100) + '...' : 'null');
   console.log('Filename:', filename);
 
+  useEffect(() => {
+    if (content) {
+      console.log('Setting processed content', content.substring(0, 50) + '...');
+      setProcessedContent(content);
+    } else {
+      console.log('No content to process');
+      setProcessedContent('');
+    }
+  }, [content]);
+
   const handleDownload = () => {
-    let downloadContent = content;
+    let downloadContent = processedContent;
     let fileExtension = 'yaml';
     
     if (activeFormat === 'json') {
@@ -83,7 +95,11 @@ const ConversionResult = ({ content, filename }: ConversionResultProps) => {
 
   const getJsonContent = () => {
     try {
-      const jsonObj = yaml.load(content);
+      if (!processedContent) {
+        console.warn('No content to convert to JSON');
+        return '// No content available';
+      }
+      const jsonObj = yaml.load(processedContent);
       return JSON.stringify(jsonObj, null, 2);
     } catch (error) {
       console.error('Error converting YAML to JSON:', error);
@@ -95,9 +111,10 @@ const ConversionResult = ({ content, filename }: ConversionResultProps) => {
     setIsVisualizerOpen(true);
   };
 
-  React.useEffect(() => {
-    console.log('Content changed in ConversionResult');
-  }, [content]);
+  if (!processedContent) {
+    console.warn('ConversionResult rendered with empty content');
+    return null;
+  }
 
   return (
     <div className="w-full max-w-xl mx-auto animate-scale-in">
@@ -168,7 +185,7 @@ const ConversionResult = ({ content, filename }: ConversionResultProps) => {
                 isExpanded ? 'h-[500px]' : 'h-[240px]'
               } transition-all duration-300`}>
                 <pre className="whitespace-pre-wrap break-words">
-                  {content}
+                  {processedContent}
                 </pre>
               </ScrollArea>
             </TabsContent>
@@ -198,7 +215,7 @@ const ConversionResult = ({ content, filename }: ConversionResultProps) => {
       </div>
       
       <ApiVisualizer 
-        data={parseApiSpec(content)}
+        data={parseApiSpec(processedContent)}
         isOpen={isVisualizerOpen}
         onClose={() => setIsVisualizerOpen(false)}
       />

@@ -96,6 +96,9 @@ const Index = () => {
       }
       
       const conversionResult = convertSpecification(yamlContent, direction);
+      console.log('Conversion successful. Setting swaggerContent:', 
+        conversionResult.content ? conversionResult.content.substring(0, 50) + '...' : 'null');
+      
       setSwaggerContent(conversionResult.content);
       setConversionWarnings(conversionResult.warnings);
       
@@ -167,6 +170,10 @@ const Index = () => {
       </div>
     );
   };
+
+  useEffect(() => {
+    console.log('swaggerContent updated:', swaggerContent ? 'content present' : 'no content');
+  }, [swaggerContent]);
 
   return (
     <div className="min-h-screen flex flex-col">
@@ -247,7 +254,7 @@ const Index = () => {
             )}
             
             {swaggerContent && (
-              <div className="mt-8">
+              <div className="mt-8 animate-fade-in">
                 <ConversionResult 
                   content={swaggerContent} 
                   filename={getResultFilename()} 
@@ -312,10 +319,12 @@ const Index = () => {
                   )}
                   
                   {swaggerContent ? (
-                    <ConversionResult 
-                      content={swaggerContent} 
-                      filename={getResultFilename()} 
-                    />
+                    <div className="animate-fade-in">
+                      <ConversionResult 
+                        content={swaggerContent} 
+                        filename={getResultFilename()} 
+                      />
+                    </div>
                   ) : (
                     <div className="flex items-center justify-center h-full">
                       <div className="text-center text-muted-foreground">
