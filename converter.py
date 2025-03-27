@@ -11,9 +11,61 @@ class ConversionDirection(str, Enum):
     SWAGGER_TO_OPENAPI = 'swagger-to-openapi'
 
 
+# Helper function to fix $ref paths for Swagger 2.0
+def fix_swagger2_references(obj: Any) -> Any:
+    if obj is None:
+        return None
+    
+    if isinstance(obj, dict):
+        result = {}
+        
+        for key, value in obj.items():
+            # Handle $ref specifically
+            if key == '$ref' and isinstance(value, str):
+                # Replace components/schemas with definitions
+                result[key] = value.replace('#/components/schemas/', '#/definitions/')
+            # Handle anyOf (not supported in Swagger 2.0)
+            elif key in ('anyOf', 'oneOf'):
+                # Pick the first non-null schema or just the first one
+                schemas = value
+                non_null_schema = next((s for s in schemas if not s.get('type') == 'null'), schemas[0])
+                
+                # Apply the non-null schema properties directly to the parent
+                for k, v in non_null_schema.items():
+                    result[k] = fix_swagger2_references(v)
+                
+                # Add x-nullable if null was an option
+                if any(s.get('type') == 'null' for s in schemas):
+                    result['x-nullable'] = True
+            # For all other properties, recurse
+            else:
+                result[key] = fix_swagger2_references(value)
+        
+        return result
+    elif isinstance(obj, list):
+        return [fix_swagger2_references(item) for item in obj]
+    else:
+        # Return primitives unchanged
+        return obj
+
+
+# Ensure all non-body parameters have a type
+def ensure_parameter_types(parameters: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    if not parameters:
+        return parameters
+    
+    result = []
+    for param in parameters:
+        if param.get('in') != 'body' and not param.get('schema') and not param.get('type'):
+            # Default to string if no type is specified
+            param['type'] = 'string'
+        result.append(param)
+    
+    return result
+
+
 # Detect OpenAPI 3.x features that aren't fully supported in Swagger 2.0
 def detect_unsupported_features(openapi_spec: Dict[str, Any]) -> List[str]:
-    # ... keep existing code (OpenAPI 3.x feature detection logic)
     warnings = []
     
     # Check for callbacks (not supported in Swagger 2.0)
@@ -30,9 +82,9 @@ def detect_unsupported_features(openapi_spec: Dict[str, Any]) -> List[str]:
         
         for schema in schemas:
             if schema.get('oneOf'):
-                warnings.append('oneOf schemas will be simplified to the first schema in the list.')
+                warnings.append('oneOf schemas will be simplified to the first schema in the list with x-nullable if null is an option.')
             if schema.get('anyOf'):
-                warnings.append('anyOf schemas will be simplified to the first schema in the list.')
+                warnings.append('anyOf schemas will be simplified to the first schema in the list with x-nullable if null is an option.')
     
     # Check for multiple content types in request bodies
     if openapi_spec.get('paths'):
@@ -113,7 +165,6 @@ def detect_swagger_unsupported_features(swagger_spec: Dict[str, Any]) -> List[st
 
 # Convert OpenAPI 3.x to Swagger 2.0
 def convert_openapi_to_swagger(yaml_content: str) -> Dict[str, Any]:
-    # ... keep existing code (OpenAPI to Swagger conversion setup)
     try:
         # Parse the YAML content to Python dictionary
         openapi_spec = yaml.safe_load(yaml_content)
@@ -172,10 +223,17 @@ def convert_openapi_to_swagger(yaml_content: str) -> Dict[str, Any]:
                         continue
                     
                     swagger_path[method] = convert_operation(operation)
+                    
+                    # Preserve operation-level security
+                    if operation.get('security'):
+                        swagger_path[method]['security'] = operation['security']
+        
+        # Fix all $ref paths and handle anyOf/oneOf
+        fixed_swagger_spec = fix_swagger2_references(swagger_spec)
         
         # Convert to YAML
         return {
-            'content': yaml.dump(swagger_spec),
+            'content': yaml.dump(fixed_swagger_spec),
             'warnings': warnings
         }
     except Exception as error:
@@ -490,18 +548,39 @@ def convert_operation(operation: Dict[str, Any]) -> Dict[str, Any]:
                 if param['schema'].get('$ref'):
                     converted['schema'] = param['schema']
                 else:
-                    converted['type'] = param['schema'].get('type')
-                    
-                    if param['schema'].get('items'):
-                        converted['items'] = param['schema']['items']
-                    
-                    if param['schema'].get('enum'):
-                        converted['enum'] = param['schema']['enum']
+                    # For non-body parameters, move schema properties up to parameter
+                    if param.get('in') != 'body':
+                        if param['schema'].get('type'):
+                            converted['type'] = param['schema']['type']
+                            
+                            # Handle array type
+                            if param['schema']['type'] == 'array' and param['schema'].get('items'):
+                                converted['items'] = param['schema']['items']
+                            
+                            # Handle enum
+                            if param['schema'].get('enum'):
+                                converted['enum'] = param['schema']['enum']
+                            
+                            # Handle format
+                            if param['schema'].get('format'):
+                                converted['format'] = param['schema']['format']
+                        else:
+                            # Default to string if no type is specified
+                            converted['type'] = 'string'
+                    else:
+                        # For body parameters, keep the schema
+                        converted['schema'] = param['schema']
+            elif param.get('in') != 'body' and not converted.get('type'):
+                # Ensure non-body parameters have a type
+                converted['type'] = 'string'
             
             # Clean up None values
             converted = {k: v for k, v in converted.items() if v is not None}
             
             result['parameters'].append(converted)
+        
+        # Ensure all parameters have required types
+        result['parameters'] = ensure_parameter_types(result['parameters'])
     
     # Convert requestBody to parameter
     if operation.get('requestBody'):
@@ -597,4 +676,4 @@ def detect_spec_type(content: str) -> str:
         else:
             return 'unknown'
     except Exception:
-        return 'unknown' 
+        return 'unknown'

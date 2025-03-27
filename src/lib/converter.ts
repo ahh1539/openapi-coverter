@@ -86,6 +86,69 @@ export enum ConversionDirection {
   SWAGGER_TO_OPENAPI = 'swagger-to-openapi'
 }
 
+// Helper function to fix $ref paths for Swagger 2.0
+function fixSwagger2References(obj: any): any {
+  if (!obj) return obj;
+  
+  if (typeof obj === 'object') {
+    // Handle arrays
+    if (Array.isArray(obj)) {
+      return obj.map(item => fixSwagger2References(item));
+    }
+    
+    // Handle objects
+    const result: any = {};
+    
+    for (const [key, value] of Object.entries(obj)) {
+      // Handle $ref specifically
+      if (key === '$ref' && typeof value === 'string') {
+        // Replace components/schemas with definitions
+        result[key] = value.replace('#/components/schemas/', '#/definitions/');
+      } 
+      // Handle anyOf (not supported in Swagger 2.0)
+      else if (key === 'anyOf' || key === 'oneOf') {
+        // Pick the first non-null schema or just the first one
+        const schemas = value as any[];
+        const nonNullSchema = schemas.find(schema => 
+          !schema.type || schema.type !== 'null'
+        ) || schemas[0];
+        
+        // Apply the non-null schema properties directly to the parent
+        Object.entries(nonNullSchema).forEach(([k, v]) => {
+          result[k] = fixSwagger2References(v);
+        });
+        
+        // Add x-nullable if null was an option
+        if (schemas.some(schema => schema.type === 'null')) {
+          result['x-nullable'] = true;
+        }
+      }
+      // For all other properties, recurse
+      else {
+        result[key] = fixSwagger2References(value);
+      }
+    }
+    
+    return result;
+  }
+  
+  // Return primitives unchanged
+  return obj;
+}
+
+// Ensure all non-body parameters have a type
+function ensureParameterTypes(parameters: any[]): any[] {
+  if (!parameters) return parameters;
+  
+  return parameters.map(param => {
+    if (param.in !== 'body' && !param.schema && !param.type) {
+      // Default to string if no type is specified
+      param.type = 'string';
+    }
+    return param;
+  });
+}
+
 // Detect OpenAPI 3.x features that aren't fully supported in Swagger 2.0
 export function detectUnsupportedFeatures(openApiSpec: OpenAPISpec): string[] {
   const warnings: string[] = [];
@@ -102,14 +165,14 @@ export function detectUnsupportedFeatures(openApiSpec: OpenAPISpec): string[] {
   
   // Check for oneOf, anyOf, allOf in schemas
   if (openApiSpec.components?.schemas) {
-    const schemas = Object.values(openApiSpec.components.schemas) as any[];
+    const schemas = Object.values(openApiSpec.components.schemas);
     
     for (const schema of schemas) {
       if (schema.oneOf) {
-        warnings.push('oneOf schemas will be simplified to the first schema in the list.');
+        warnings.push('oneOf schemas will be simplified to the first schema in the list with x-nullable if null is an option.');
       }
       if (schema.anyOf) {
-        warnings.push('anyOf schemas will be simplified to the first schema in the list.');
+        warnings.push('anyOf schemas will be simplified to the first schema in the list with x-nullable if null is an option.');
       }
     }
   }
@@ -275,13 +338,21 @@ export function convertOpenApiToSwagger(yamlContent: string): { content: string;
           if (method === 'parameters' || method === '$ref') continue;
           
           swaggerPath[method] = convertOperation(operation as OpenAPIOperation);
+          
+          // Preserve operation-level security
+          if ((operation as OpenAPIOperation).security) {
+            swaggerPath[method].security = (operation as OpenAPIOperation).security;
+          }
         }
       }
     }
     
+    // Fix all $ref paths and handle anyOf/oneOf
+    const fixedSwaggerSpec = fixSwagger2References(swaggerSpec);
+    
     // Convert to YAML
     return { 
-      content: yaml.dump(swaggerSpec),
+      content: yaml.dump(fixedSwaggerSpec),
       warnings 
     };
   } catch (error) {
@@ -608,20 +679,44 @@ function convertOperation(operation: OpenAPIOperation): any {
         if (param.schema.$ref) {
           converted.schema = param.schema;
         } else {
-          converted.type = param.schema.type;
-          
-          if (param.schema.items) {
-            converted.items = param.schema.items;
-          }
-          
-          if (param.schema.enum) {
-            converted.enum = param.schema.enum;
+          // For non-body parameters, move schema properties up to parameter
+          if (param.in !== 'body') {
+            if (param.schema.type) {
+              converted.type = param.schema.type;
+              
+              // Handle array type
+              if (param.schema.type === 'array' && param.schema.items) {
+                converted.items = param.schema.items;
+              }
+              
+              // Handle enum
+              if (param.schema.enum) {
+                converted.enum = param.schema.enum;
+              }
+              
+              // Handle format
+              if (param.schema.format) {
+                converted.format = param.schema.format;
+              }
+            } else {
+              // Default to string if no type is specified
+              converted.type = 'string';
+            }
+          } else {
+            // For body parameters, keep the schema
+            converted.schema = param.schema;
           }
         }
+      } else if (param.in !== 'body' && !converted.type) {
+        // Ensure non-body parameters have a type
+        converted.type = 'string';
       }
       
       return converted;
     });
+    
+    // Ensure all parameters have required types
+    result.parameters = ensureParameterTypes(result.parameters);
   }
   
   // Convert requestBody to parameter

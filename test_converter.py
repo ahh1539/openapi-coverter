@@ -36,6 +36,72 @@ try:
                 else:
                     print(f"❌ Security missing in {method.upper()} {path}")
     
+    # Check for proper reference paths
+    ref_paths_correct = True
+    
+    def check_refs(obj):
+        nonlocal ref_paths_correct
+        if isinstance(obj, dict):
+            for key, value in obj.items():
+                if key == '$ref' and isinstance(value, str):
+                    if not value.startswith('#/definitions/'):
+                        ref_paths_correct = False
+                        print(f"❌ Invalid reference path found: {value}")
+                elif isinstance(value, (dict, list)):
+                    check_refs(value)
+        elif isinstance(obj, list):
+            for item in obj:
+                if isinstance(item, (dict, list)):
+                    check_refs(item)
+    
+    check_refs(converted_spec)
+    
+    if ref_paths_correct:
+        print("✅ All reference paths use #/definitions/ format")
+    
+    # Check for anyOf keyword usage
+    anyof_used = False
+    
+    def check_anyof(obj):
+        nonlocal anyof_used
+        if isinstance(obj, dict):
+            if 'anyOf' in obj or 'oneOf' in obj:
+                anyof_used = True
+                print(f"❌ anyOf/oneOf keyword found in the converted spec")
+            for value in obj.values():
+                if isinstance(value, (dict, list)):
+                    check_anyof(value)
+        elif isinstance(obj, list):
+            for item in obj:
+                if isinstance(item, (dict, list)):
+                    check_anyof(item)
+    
+    check_anyof(converted_spec)
+    
+    if not anyof_used:
+        print("✅ No anyOf/oneOf keywords found in converted spec")
+    
+    # Check parameter types
+    all_params_have_types = True
+    
+    def check_parameter_types(obj):
+        nonlocal all_params_have_types
+        if isinstance(obj, dict) and obj.get('paths'):
+            for path_item in obj['paths'].values():
+                for method, operation in path_item.items():
+                    if method == 'parameters':
+                        continue
+                    if 'parameters' in operation:
+                        for param in operation['parameters']:
+                            if param.get('in') != 'body' and not param.get('type') and not param.get('schema'):
+                                all_params_have_types = False
+                                print(f"❌ Parameter without type found: {param.get('name')}")
+    
+    check_parameter_types(converted_spec)
+    
+    if all_params_have_types:
+        print("✅ All non-body parameters have types")
+    
     if result_swagger['warnings']:
         print("Warnings:")
         for warning in result_swagger['warnings']:
