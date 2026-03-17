@@ -581,12 +581,33 @@ export function convertOpenApiToSwagger(yamlContent: string): { content: string;
     
     // Extract host and basePath from servers if available
     if (openApiSpec.servers && openApiSpec.servers.length > 0) {
-      const serverUrl = new URL(openApiSpec.servers[0].url);
-      swaggerSpec.host = serverUrl.host;
-      swaggerSpec.basePath = serverUrl.pathname || '/';
-      
-      if (serverUrl.protocol) {
-        swaggerSpec.schemes = [serverUrl.protocol.replace(':', '')];
+      const rawUrl = openApiSpec.servers[0].url;
+      try {
+        const serverUrl = new URL(rawUrl);
+        swaggerSpec.host = serverUrl.host;
+        swaggerSpec.basePath = serverUrl.pathname || '/';
+        if (serverUrl.protocol) {
+          swaggerSpec.schemes = [serverUrl.protocol.replace(':', '')];
+        }
+      } catch {
+        // Handle relative URLs or URLs with template variables (e.g. /api/v1, {scheme}://host)
+        // Try to extract basePath from relative URL
+        if (rawUrl.startsWith('/')) {
+          swaggerSpec.basePath = rawUrl;
+        } else {
+          // Attempt to strip template variables and parse
+          const sanitized = rawUrl.replace(/\{[^}]+\}/g, 'placeholder');
+          try {
+            const serverUrl = new URL(sanitized);
+            swaggerSpec.host = serverUrl.host.includes('placeholder') ? '' : serverUrl.host;
+            swaggerSpec.basePath = serverUrl.pathname || '/';
+            if (serverUrl.protocol) {
+              swaggerSpec.schemes = [serverUrl.protocol.replace(':', '')];
+            }
+          } catch {
+            // Last resort: keep defaults
+          }
+        }
       }
     }
     
@@ -678,23 +699,17 @@ function convertParameters(parameters: any[]): any[] {
       param = { ...param, in: 'header' };
     }
     
-    // Handle schema with only a $ref - move $ref directly to parameter level
-    if (param.in !== 'body' && param.schema && param.schema.$ref && Object.keys(param.schema).length === 1) {
-      return {
-        ...param,
-        $ref: param.schema.$ref.replace('#/components/schemas/', '#/definitions/'),
-        schema: undefined
-      };
-    }
-    
-        // Handle 'schema' in non-body parameters (move properties up a level)
+    // Handle 'schema' in non-body parameters (move properties up a level)
         if (param.in !== 'body' && param.schema) {
             const converted = { ...param };
             const schema = param.schema; // Use a shorter alias
 
             if (schema.$ref) {
-                // If it's a reference, move it directly to the parameter level
-                converted.$ref = schema.$ref.replace('#/components/schemas/', '#/definitions/');
+                // In Swagger 2.0, non-body parameters cannot use $ref to reference schemas.
+                // $ref at parameter level would reference a parameter definition, not a schema.
+                // Best we can do is set a fallback type since we can't resolve the ref here.
+                converted.type = 'string';
+                converted['x-original-ref'] = schema.$ref.replace('#/components/schemas/', '#/definitions/');
                 delete converted.schema;
             } else {
                 // Extract schema properties to parameter level
@@ -884,11 +899,6 @@ function convertSwaggerParametersToOpenApi(parameters: any[]): any[] {
         if (param['x-nullable'] === true) {
           newParam.schema.nullable = true;
           delete newParam['x-nullable']; // Clean up Swagger 2.0 extension
-        }
-
-        // If the parameter is not required (and not 'in: body'), it's nullable in OpenAPI 3.0
-        if (param.required === false) {
-           newParam.schema.nullable = true;
         }
         
         // Handle array items
